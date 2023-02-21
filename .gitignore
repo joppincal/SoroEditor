@@ -1,4 +1,4 @@
-settings.yaml
+*.yaml
 *.tcs
 *.python
 *.lnk
