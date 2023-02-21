@@ -8,13 +8,14 @@ from tkinter.ttk import PanedWindow as ttkPanedWindow
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledText
+from ttkbootstrap import Entry
 from ttkbootstrap import Frame
 from ttkbootstrap import Menu
 from ttkbootstrap import Label
 from ttkbootstrap import Button
 from ttkbootstrap import PanedWindow
+from ttkbootstrap import Style
 from ttkbootstrap.dialogs.dialogs import MessageDialog
-from ttkbootstrap import Entry
 import yaml
 
 class Main(Frame):
@@ -297,7 +298,12 @@ class Main(Frame):
         self.st2.pack(fill=BOTH, expand=YES)
         self.st3.pack(fill=BOTH, expand=YES)
 
+        # 初期フォーカスをe1にセット
         self.e1.focus_set()
+
+        # テーマを設定
+        windowstyle = Style()
+        windowstyle.theme_use(self.settings['themename'])
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
     def file_open(self, event=None, file: str|None=None):
@@ -507,7 +513,7 @@ class Main(Frame):
 
 
 if __name__ == '__main__':
-    root = ttk.Window(title='ThreeCrows', themename='darkly', minsize=(1200, 800))
+    root = ttk.Window(title='ThreeCrows', minsize=(1200, 800))
     app = Main(master=root)
     if app.settingFile_Error_md: app.settingFile_Error_md.show()
     app.mainloop()
