@@ -1,5 +1,6 @@
 from collections import deque
 import datetime
+from time import sleep
 from tkinter import filedialog
 # from tkinter import *
 from tkinter import PanedWindow as tkPanedWindow
@@ -70,15 +71,15 @@ class Main(Frame):
         # メニューバーの作成
         menubar = Menu()
 
-        # メニュバー - ファイル
+        ## メニュバー - ファイル
         self.menu_file = Menu(menubar, tearoff=False)
 
         self.menu_file.add_command(label='ファイルを開く', command=self.file_open, accelerator='Ctrl+O')
         self.menu_file.add_command(label='上書き保存', command=self.file_over_write_save, accelerator='Ctrl+S')
         self.menu_file.add_command(label='名前をつけて保存', command=self.file_save_as, accelerator='Ctrl+Shift+S')
 
+        ###メニューバー - ファイル - 最近使用したファイル
         self.menu_file_recently = Menu(self.menu_file, tearoff=False)
-
 
         try:
             self.recently_files: list = self.settings['recently_files']
@@ -96,6 +97,18 @@ class Main(Frame):
         self.menu_file.add_separator()
         self.menu_file.add_command(label='終了', command=lambda:self.file_close(shouldExit=True))
         menubar.add_cascade(label='ファイル', menu=self.menu_file)
+
+        ## メニューバー - 編集
+        self.menu_edit = Menu(menubar, tearoff=False)
+
+        self.menu_edit.add_command(label='切り取り', command=self.cut, accelerator='Ctrl+X')
+        self.menu_edit.add_command(label='コピー', command=self.copy, accelerator='Ctrl+C')
+        self.menu_edit.add_command(label='貼り付け', command=self.paste, accelerator='Ctrl+V')
+        self.menu_edit.add_command(label='すべて選択', command=self.select_all, accelerator='Ctrl+A')
+        self.menu_edit.add_command(label='1行選択', command=self.select_line, accelerator='Ctrl+Shift+A')
+        self.menu_edit.add_command(label='取り消し', command=self.undo, accelerator='Ctrl+Z')
+        self.menu_edit.add_command(label='取り消しを戻す', command=self.repeat, accelerator='Ctrl+Shift+Z')
+        menubar.add_cascade(label='編集', menu=self.menu_edit)
 
         self.master.config(menu = menubar)
 
@@ -247,6 +260,7 @@ class Main(Frame):
             e.widget.tk_focusNext().focus_set()
         self.master.bind('<KeyPress>', statusbar_element_reload)
         # self.master.bind('<KeyPress>', lambda e:print(e), '+')
+        # self.master.bind('<KeyRelease>', lambda e:print(e), '+')
         self.master.bind('<Control-z>', self.undo)
         self.master.bind('<Control-Z>', self.repeat)
         self.master.bind('<KeyRelease>', self.recode_edit_history)
@@ -460,7 +474,7 @@ class Main(Frame):
             return
         current_text = self.get_current_text()
         l = [self.e1, self.st1, self.e2, self.st2, self.e3, self.st3]
-        for i in range(5):
+        for i in range(6):
             if current_text[i] != self.edit_history[1][i]:
                 print('undo')
                 l[i].delete('0', END) if i % 2 == 0 else l[i].delete('1.0', END)
@@ -478,6 +492,18 @@ class Main(Frame):
                 l[i].delete('0', END) if i % 2 == 0 else l[i].delete('1.0', END)
                 l[i].insert(END, self.undo_history[0][i])
         self.edit_history.appendleft(self.undo_history.popleft())
+
+    def cut(self, e=None):
+        print(self.master.focus_get())
+        pass
+    def copy(self, e=None):
+        pass
+    def paste(self, e=None):
+        pass
+    def select_all(self, e=None):
+        self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
+    def select_line(self, e=None):
+        self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
 
 
 if __name__ == '__main__':
