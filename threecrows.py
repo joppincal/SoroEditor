@@ -1,14 +1,10 @@
 from collections import deque
 import datetime
-from time import sleep
-from tkinter import PhotoImage, filedialog
-# from tkinter import *
-from tkinter import PanedWindow as tkPanedWindow
-from tkinter.ttk import PanedWindow as ttkPanedWindow
+import re
+from tkinter import filedialog
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledText
-from ttkbootstrap import Canvas
 from ttkbootstrap import Entry
 from ttkbootstrap import Frame
 from ttkbootstrap import Menu
@@ -58,11 +54,6 @@ class Main(Frame):
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         else: self.settings = data
 
-        self.filepath = ''
-        self.data = {'line1_text': '', 'line1_title': '', 'line2_text': '', 'line2_title': '', 'line3_text': '', 'line3_title': ''}
-        self.edit_history = deque([['', '', '', '', '', '']])
-        self.undo_history = deque([])
-
         # 設定ファイルから各設定を読み込み
         ## テーマを設定
         self.windowstyle = Style()
@@ -73,13 +64,19 @@ class Main(Frame):
         self.number_of_columns = (self.settings['columns']['number'])
         ## 列比率
         self.column_percentage = [x*0.01 for x in self.settings['columns']['percentage']]
+        ## self.number_of_columns と self.column_percentage の内、数の少ない方に合わせる
+        if self.number_of_columns < len(self.column_percentage):
+            i = self.number_of_columns - len(self.column_percentage)
+            del self.column_percentage[i:]
+        elif self.number_of_columns > len(self.column_percentage):
+            self.number_of_columns = len(self.column_percentage)
 
-        stre1 = ''
-        stre2 = ''
-        stre3 = ''
-        strst1 = ''
-        strst2 = ''
-        strst3 = ''
+        self.filepath = ''
+        self.data = {}
+        for i in range(self.number_of_columns):
+            self.data[i] = {'text': '', 'title': ''}
+        self.edit_history = deque([self.data])
+        self.undo_history = deque([])
 
         # メニューバーの作成
         menubar = Menu()
@@ -131,58 +128,32 @@ class Main(Frame):
         self.columns = []
         self.entrys = []
         self.scrolledtexts = []
+        self.text_in_entrys = []
+        self.text_in_scrolledtexts = []
 
-        # 列数の自由変更のための準備
-        # for i in range(self.number_of_columns):
-        #     self.columns.append(Frame(f1, padding=5))
-        #     self.entrys.append(Entry(self.columns[-1], font=self.font))
-        #     self.scrolledtexts.append(ScrolledText(self.columns[-1], padding=3, autohide=True, wrap=CHAR, font=self.font))
+        # テキストエディタ部分の要素の準備
+        for i in range(self.number_of_columns):
+            self.columns.append(Frame(f1, padding=5))
+            self.entrys.append(Entry(self.columns[-1], font=self.font))
+            self.scrolledtexts.append(ScrolledText(self.columns[-1], padding=3, autohide=True, wrap=CHAR, font=self.font))
+            self.text_in_entrys.append('')
+            self.text_in_scrolledtexts.append('')
 
-        f1_1 = Frame(f1, padding=5)
-        f1_2 = Frame(f1, padding=5)
-        f1_3 = Frame(f1, padding=5)
-
-        self.e1 = Entry(f1_1, font=self.font)
-        self.e2 = Entry(f1_2, font=self.font)
-        self.e3 = Entry(f1_3, font=self.font)
-        self.e1.insert(END, stre1)
-        self.e2.insert(END, stre2)
-        self.e3.insert(END, stre3)
-
-        self.st1 = ScrolledText(f1_1, padding=3, autohide=True, wrap=CHAR, font=self.font)
-        self.st2 = ScrolledText(f1_2, padding=3, autohide=True, wrap=CHAR, font=self.font)
-        self.st3 = ScrolledText(f1_3, padding=3, autohide=True, wrap=CHAR, font=self.font)
-        self.st1.insert(0., strst1)
-        self.st2.insert(0., strst2)
-        self.st3.insert(0., strst3)
+        for i in range(self.number_of_columns):
+            self.entrys[i].insert(END, self.text_in_entrys[i])
+            self.scrolledtexts[i].insert(0., self.text_in_scrolledtexts[i])
 
         # statusbar要素を作成
         self.sb_elements = []
-        ## 文字数カウンター
-        def st1_letter_count():
-            title = self.e1.get() if self.e1.get() else '左'
-            text = '{0}: {1}文字'.format(title, self.letter_count(obj=self.st1)) + ' '*40
+        def letter_count(i=0):
+            if i >= self.number_of_columns: return
+            title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
+            text = f'{title}: {self.letter_count(obj=self.scrolledtexts[i])}文字'
             return ('label', text)
-        def st2_letter_count():
-            title = self.e2.get() if self.e2.get() else '中央'
-            text = '{0}: {1}文字'.format(title, self.letter_count(obj=self.st2)) + ' '*40
-            return ('label', text)
-        def st3_letter_count():
-            title = self.e3.get() if self.e3.get() else '右'
-            text = '{0}: {1}文字'.format(title, self.letter_count(obj=self.st3)) + ' '*40
-            return ('label', text)
-        ## 行数カウンター
-        def st1_line_count():
-            title = self.e1.get() if self.e1.get() else '左'
-            text = '{0}: {1}行'.format(title, self.line_count(obj=self.st1)) + ' '*40
-            return ('label', text)
-        def st2_line_count():
-            title = self.e2.get() if self.e2.get() else '中央'
-            text = '{0}: {1}行'.format(title, self.line_count(obj=self.st2)) + ' '*40
-            return ('label', text)
-        def st3_line_count():
-            title = self.e3.get() if self.e3.get() else '右'
-            text = '{0}: {1}行'.format(title, self.line_count(obj=self.st3)) + ' '*40
+        def line_count(i=0):
+            if i >= self.number_of_columns: return
+            title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
+            text = f'{title}: {self.line_count(obj=self.scrolledtexts[i])}行'
             return ('label', text)
         ## ショートカットキー
         self.hotkeys1 = ('label', '[Ctrl+O]: 開く  [Ctrl+S]: 上書き保存  [Ctrl+Shift+S]: 名前をつけて保存  [Ctrl+R]: 最後に使ったファイルを開く（起動直後のみ）')
@@ -206,12 +177,8 @@ class Main(Frame):
 
         # 設定ファイルからステータスバーの設定を読み込むメソッド
         def statusbar_element_setting_load(name: str=str):
-            if name == 'st1_letter_count': return(st1_letter_count())
-            elif name == 'st2_letter_count': return(st2_letter_count())
-            elif name == 'st3_letter_count': return(st3_letter_count())
-            elif name == 'st1_line_count': return(st1_line_count())
-            elif name == 'st2_line_count': return(st2_line_count())
-            elif name == 'st3_line_count': return(st3_line_count())
+            if   re.compile(r'letter_count_\d+').search(name): return(letter_count(int(re.search(r'\d+', name).group()) - 1))
+            elif re.compile(r'line_count_\d+').search(name): return(line_count(int(re.search(r'\d+', name).group()) - 1))
             elif name == 'hotkeys1': return(self.hotkeys1)
             elif name == 'hotkeys2': return(self.hotkeys2)
             elif name == 'hotkeys3': return(self.hotkeys3)
@@ -233,13 +200,14 @@ class Main(Frame):
 
             try:
                 for name in l: l2.append(statusbar_element_setting_load(name))
-            except TypeError:
+            except TypeError as e:
                 pass
 
             # ステータスバーを作る
-            if num in range(6) and l2[0]:
+            if num in range(6) and l2:
                 self.statusbar_element_dict[num] = dict()
                 for i,e in zip(range(len(l2)), l2):
+                    if not e: continue
                     self.statusbar_element_dict[num][i] = make_toolbar_element(*e)
                 for e in self.statusbar_element_dict[num].values():
                     i = 1 if num < 4 else 0
@@ -267,7 +235,7 @@ class Main(Frame):
         self.statusbar3 = PanedWindow(self.master, height=30, orient=HORIZONTAL)
         self.statusbar4 = PanedWindow(self.master, height=50, orient=HORIZONTAL)
         self.statusbar5 = PanedWindow(self.master, height=50, orient=HORIZONTAL)
-        for i in range(6):
+        for i in range(5):
             statusbar_element_setting(num=i)
 
 
@@ -294,7 +262,7 @@ class Main(Frame):
         self.master.bind('<Control-f>', focus_to_right)
         self.master.bind('<Control-Left>', focus_to_left)
         self.master.bind('<Control-d>', focus_to_left)
-        for enter in (self.e1, self.e2, self.e3):
+        for enter in self.entrys:
             enter.bind('<Down>', focus_to_bottom)
             enter.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
@@ -309,25 +277,18 @@ class Main(Frame):
 
         f1.pack(fill=BOTH, expand=YES)
 
-        # f1_1.place(relx=0.0, rely=0.0, relwidth=self.column_percentage[0], relheight=1.0)
-        # f1_2.place(relx=self.column_percentage[0], rely=0.0, relwidth=self.column_percentage[1], relheight=1.0)
-        # f1_3.place(relx=self.column_percentage[0]+self.column_percentage[1], rely=0.0, relwidth=self.column_percentage[2], relheight=1.0)
-
-        for i, f in zip(range(3), (f1_1, f1_2, f1_3)):
+        for i in range(self.number_of_columns):
+            # 列の枠を作成
             j, relx = i, 0.0
             while j: relx, j = relx + self.column_percentage[j-1], j - 1
-            f.place(relx=relx, rely=0.0, relwidth=self.column_percentage[i], relheight=1.0)
-
-        self.e1.pack(fill=X, expand=False, padx=3, pady=10)
-        self.e2.pack(fill=X, expand=False, padx=3, pady=10)
-        self.e3.pack(fill=X, expand=False, padx=3, pady=10)
-
-        self.st1.pack(fill=BOTH, expand=YES)
-        self.st2.pack(fill=BOTH, expand=YES)
-        self.st3.pack(fill=BOTH, expand=YES)
+            self.columns[i].place(relx=relx, rely=0.0, relwidth=self.column_percentage[i], relheight=1.0)
+            # Entryを作成
+            self.entrys[i].pack(fill=X, expand=False, padx=3, pady=10)
+            # ScrolledTextを作成
+            self.scrolledtexts[i].pack(fill=BOTH, expand=YES)
 
         # 初期フォーカスをe1にセット
-        self.e1.focus_set()
+        self.entrys[0].focus_set()
 
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
@@ -352,21 +313,13 @@ class Main(Frame):
             try:
                 with open(self.filepath, mode='rt', encoding='utf-8') as f:
                     data = yaml.safe_load(f)
-                    self.data = data
-                    self.e1.delete('0',END)
-                    self.e2.delete('0',END)
-                    self.e3.delete('0',END)
-                    self.e1.insert(END,data['line1_title'])
-                    self.e2.insert(END,data['line2_title'])
-                    self.e3.insert(END,data['line3_title'])
-                    self.st1.delete('1.0',END)
-                    self.st2.delete('1.0',END)
-                    self.st3.delete('1.0',END)
-                    self.st1.insert(END,data['line1_text'])
-                    self.st2.insert(END,data['line2_text'])
-                    self.st3.insert(END,data['line3_text'])
                     self.edit_history.clear()
-                    self.edit_history.appendleft([data['line1_title'], data['line1_text'], data['line2_title'], data['line2_text'], data['line3_title'], data['line3_text']])
+                    for i in range(self.number_of_columns):
+                        self.entrys[i].delete('0', END)
+                        self.entrys[i].insert(END, data[i]['title'])
+                        self.scrolledtexts[i].delete('1.0', END)
+                        self.scrolledtexts[i].insert(0., data[i]['text'])
+                    self.edit_history.appendleft(data)
                     print(data)
                 self.master.title(f'ThreeCrows - {self.filepath}')
 
@@ -381,12 +334,9 @@ class Main(Frame):
                     yaml.dump(self.settings, f, allow_unicode=True)
                 # 更新
                 for i in self.recently_files:
-                    print(i)
                     self.menu_file_recently.delete(0)
                 try:
-                    self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)'#, command=lambda:self.file_open(file=self.recently_files[0])
-                                                        )
-                    # self.menu_file_recently.unbind('<Control-r>', self.open_last_file_id)
+                    self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
                     self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
                     self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
                     self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
@@ -430,20 +380,15 @@ class Main(Frame):
     def save_file(self, path):
         try:
             with open(path, mode='wt', encoding='utf-8') as f:
-                current_text = self.get_current_text()
-                d = {'line1_text': current_text[1], 'line1_title': current_text[0], 'line2_text': current_text[3], 'line2_title': current_text[2], 'line3_text': current_text[5], 'line3_title': current_text[4]}
-                self.data = d
-                yaml.safe_dump(d, f, encoding='utf-8', allow_unicode=True)
+                current_data = self.get_current_text()
+                self.data = current_data
+                yaml.safe_dump(current_data, f, encoding='utf-8', allow_unicode=True)
         except FileNotFoundError as e:
             print(e)
 
     def file_close(self, shouldExit=False):
 
-        stre1, stre2, stre3 = self.e1.get(), self.e2.get(), self.e3.get()
-        strst1, strst2, strst3 = self.st1.get('1.0', END), self.st2.get('1.0', END), self.st3.get('1.0', END)
-        d = {'line1_text': strst1, 'line1_title': stre1, 'line2_text': strst2, 'line2_title': stre2, 'line3_text': strst3, 'line3_title': stre3}
-        for k in ('line1_text', 'line2_text', 'line3_text'):
-            d[k] = d[k][:-1]
+        current_data = self.get_current_text()
 
         if shouldExit:
             message = '更新内容が保存されていません。アプリを終了しますか。'
@@ -454,9 +399,9 @@ class Main(Frame):
             title = 'ThreeCrows - 確認'
             buttons=['キャンセル', '保存せず変更:danger', '保存して変更:success']
 
-        if self.data == d:
+        if self.data == current_data:
             self.master.destroy() if shouldExit else 0
-        elif self.data != d:
+        elif self.data != current_data:
             mg = MessageDialog(message=message, title=title, buttons=buttons)
             mg.show()
             if mg.result in ('保存せず終了', '保存せず変更'):
@@ -488,10 +433,12 @@ class Main(Frame):
             return obj.count('\n') + 1 if obj else 0
 
     def get_current_text(self):
-        current_text = [app.e1.get(), app.st1.get('1.0',END).removesuffix('\n'),
-                        app.e2.get(), app.st2.get('1.0',END).removesuffix('\n'),
-                        app.e3.get(), app.st3.get('1.0',END).removesuffix('\n')]
-        return current_text
+        current_data = {}
+        for i in range(self.number_of_columns):
+            current_data[i] = {}
+            current_data[i]['text'] = self.scrolledtexts[i].get('1.0',END).removesuffix('\n')
+            current_data[i]['title'] = self.entrys[i].get()
+        return current_data
 
     def recode_edit_history(self, event=None):
         current_text = self.get_current_text()
@@ -504,24 +451,30 @@ class Main(Frame):
         if len(self.edit_history) <= 1:
             return
         current_text = self.get_current_text()
-        l = [self.e1, self.st1, self.e2, self.st2, self.e3, self.st3]
-        for i in range(6):
-            if current_text[i] != self.edit_history[1][i]:
+        for i in range(len(self.number_of_columns)):
+            if current_text[i]['text'] != self.edit_history[1][i]['text']:
                 print('undo')
-                l[i].delete('0', END) if i % 2 == 0 else l[i].delete('1.0', END)
-                l[i].insert(END, self.edit_history[1][i])
+                self.scrolledtexts[i].delete('1.0', END)
+                self.scrolledtexts[i].insert(END, self.edit_history[1][i]['text'])
+            if current_text[i]['title'] != self.edit_history[1][i]['title']:
+                print('undo')
+                self.entrys[i].delete('0', END)
+                self.entrys[i].insert(END, self.edit_history[1][i]['title'])
         self.undo_history.appendleft(self.edit_history.popleft())
 
     def repeat(self, event=None):
         if len(self.undo_history) == 0:
             return
         current_text = self.get_current_text()
-        l = [self.e1, self.st1, self.e2, self.st2, self.e3, self.st3]
-        for i in range(5):
-            if current_text[i] != self.undo_history[0][i]:
+        for i in range(len(self.number_of_columns)):
+            if current_text[i]['text'] != self.undo_history[0][i]['text']:
                 print('repeat')
-                l[i].delete('0', END) if i % 2 == 0 else l[i].delete('1.0', END)
-                l[i].insert(END, self.undo_history[0][i])
+                self.scrolledtexts[i].delete('1.0', END)
+                self.scrolledtexts[i].insert(END, self.undo_history[0][i]['text'])
+            if current_text[i]['title'] != self.undo_history[0][i]['title']:
+                print('repeat')
+                self.entrys[i].delete('0', END)
+                self.entrys[i].insert(END, self.undo_history[0][i]['title'])
         self.edit_history.appendleft(self.undo_history.popleft())
 
     def cut(self, e=None):
