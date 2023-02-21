@@ -1,13 +1,14 @@
 from collections import deque
 import datetime
 from time import sleep
-from tkinter import filedialog
+from tkinter import PhotoImage, filedialog
 # from tkinter import *
 from tkinter import PanedWindow as tkPanedWindow
 from tkinter.ttk import PanedWindow as ttkPanedWindow
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledText
+from ttkbootstrap import Canvas
 from ttkbootstrap import Entry
 from ttkbootstrap import Frame
 from ttkbootstrap import Menu
@@ -29,7 +30,7 @@ class Main(Frame):
 
         # 設定ファイルを読み込み
         self.settingFile_Error_md = None
-        self.settings = {'recently_files': [], 'statusbar_element_settings': {0: ['hotkeys3'], 1: ['hotkeys2'], 2: ['hotkeys1'], 3: ['st2_letter_count', 'st2_line_count', 'st3_letter_count', 'st3_line_count'], 4: [None], 5: [None]}, 'themename': 'darkly'}
+        self.settings = {'columns': {'number': 3, 'percentage': [10, 60, 30]}, 'font': {'name': 'nomal', 'size': 0}, 'recently_files': [], 'statusbar_element_settings': {0: ['hotkeys3'], 1: ['hotkeys2'], 2: ['hotkeys1'], 3: ['st2_letter_count', 'st2_line_count', 'st3_letter_count', 'st3_line_count'], 4: [None], 5: [None]}, 'themename': 'darkly'}
         try:
             with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
@@ -61,6 +62,17 @@ class Main(Frame):
         self.data = {'line1_text': '', 'line1_title': '', 'line2_text': '', 'line2_title': '', 'line3_text': '', 'line3_title': ''}
         self.edit_history = deque([['', '', '', '', '', '']])
         self.undo_history = deque([])
+
+        # 設定ファイルから各設定を読み込み
+        ## テーマを設定
+        self.windowstyle = Style()
+        self.windowstyle.theme_use(self.settings['themename'])
+        ## フォント設定
+        self.font = (self.settings['font']['name'], self.settings['font']['size'])
+        ## 列数
+        self.number_of_columns = (self.settings['columns']['number'])
+        ## 列比率
+        self.column_percentage = [x*0.01 for x in self.settings['columns']['percentage']]
 
         stre1 = ''
         stre2 = ''
@@ -106,7 +118,7 @@ class Main(Frame):
         self.menu_edit.add_command(label='コピー', command=self.copy, accelerator='Ctrl+C')
         self.menu_edit.add_command(label='貼り付け', command=self.paste, accelerator='Ctrl+V')
         self.menu_edit.add_command(label='すべて選択', command=self.select_all, accelerator='Ctrl+A')
-        self.menu_edit.add_command(label='1行選択', command=self.select_line, accelerator='Ctrl+Shift+A')
+        self.menu_edit.add_command(label='1行選択', command=self.select_line)
         self.menu_edit.add_command(label='取り消し', command=self.undo, accelerator='Ctrl+Z')
         self.menu_edit.add_command(label='取り消しを戻す', command=self.repeat, accelerator='Ctrl+Shift+Z')
         menubar.add_cascade(label='編集', menu=self.menu_edit)
@@ -116,20 +128,30 @@ class Main(Frame):
         # 各パーツを製作
         f1 = Frame(self.master, padding=5)
 
+        self.columns = []
+        self.entrys = []
+        self.scrolledtexts = []
+
+        # 列数の自由変更のための準備
+        # for i in range(self.number_of_columns):
+        #     self.columns.append(Frame(f1, padding=5))
+        #     self.entrys.append(Entry(self.columns[-1], font=self.font))
+        #     self.scrolledtexts.append(ScrolledText(self.columns[-1], padding=3, autohide=True, wrap=CHAR, font=self.font))
+
         f1_1 = Frame(f1, padding=5)
         f1_2 = Frame(f1, padding=5)
         f1_3 = Frame(f1, padding=5)
 
-        self.e1 = Entry(f1_1)
-        self.e2 = Entry(f1_2)
-        self.e3 = Entry(f1_3)
+        self.e1 = Entry(f1_1, font=self.font)
+        self.e2 = Entry(f1_2, font=self.font)
+        self.e3 = Entry(f1_3, font=self.font)
         self.e1.insert(END, stre1)
         self.e2.insert(END, stre2)
         self.e3.insert(END, stre3)
 
-        self.st1 = ScrolledText(f1_1, padding=3, autohide=True, wrap=CHAR, font=('', 10))
-        self.st2 = ScrolledText(f1_2, padding=3, autohide=True, wrap=CHAR, font=('', 10))
-        self.st3 = ScrolledText(f1_3, padding=3, autohide=True, wrap=CHAR, font=('', 10))
+        self.st1 = ScrolledText(f1_1, padding=3, autohide=True, wrap=CHAR, font=self.font)
+        self.st2 = ScrolledText(f1_2, padding=3, autohide=True, wrap=CHAR, font=self.font)
+        self.st3 = ScrolledText(f1_3, padding=3, autohide=True, wrap=CHAR, font=self.font)
         self.st1.insert(0., strst1)
         self.st2.insert(0., strst2)
         self.st3.insert(0., strst3)
@@ -172,7 +194,7 @@ class Main(Frame):
         self.toolbutton_open = ('button', 'ファイルを開く[Ctrl+O]', self.file_open)
         self.toolbutton_over_write_save = ('button', '上書き保存[Ctrl+S]', self.file_over_write_save)
         self.toolbutton_save_as = ('button', '名前をつけて保存[Ctrl+Shift+S]', self.file_save_as)
-        ## 初期ステータスバーバーメッセージ
+        ## 初期ステータスバーメッセージ
         self.statusbar_message = ('label', 'ステータスバーの表示項目はメニューバーの 設定-ステータスバー から変更できます')
 
         # ステータスバー作成メソッド
@@ -262,9 +284,9 @@ class Main(Frame):
         self.master.bind('<KeyPress>', statusbar_element_reload)
         # self.master.bind('<KeyPress>', lambda e:print(e), '+')
         # self.master.bind('<KeyRelease>', lambda e:print(e), '+')
+        self.master.bind('<KeyRelease>', self.recode_edit_history)
         self.master.bind('<Control-z>', self.undo)
         self.master.bind('<Control-Z>', self.repeat)
-        self.master.bind('<KeyRelease>', self.recode_edit_history)
         self.menu_file.bind_all('<Control-o>', self.file_open)
         self.menu_file.bind_all('<Control-s>', self.file_over_write_save)
         self.menu_file.bind_all('<Control-S>', self.file_save_as)
@@ -284,11 +306,17 @@ class Main(Frame):
         self.statusbar3.pack(fill=X, side=BOTTOM, padx=5, pady=3) if len(self.statusbar3.panes()) else print('statusbar3 was not packed')
         self.statusbar4.pack(fill=X) if len(self.statusbar4.panes()) else print('statusbar4 was not packed')
         self.statusbar5.pack(fill=X) if len(self.statusbar5.panes()) else print('statusbar5 was not packed')
+
         f1.pack(fill=BOTH, expand=YES)
 
-        f1_1.place(relx=0.0, rely=0.0, relwidth=0.1, relheight=1.0)
-        f1_2.place(relx=0.1, rely=0.0, relwidth=0.6, relheight=1.0)
-        f1_3.place(relx=0.7, rely=0.0, relwidth=0.3, relheight=1.0)
+        # f1_1.place(relx=0.0, rely=0.0, relwidth=self.column_percentage[0], relheight=1.0)
+        # f1_2.place(relx=self.column_percentage[0], rely=0.0, relwidth=self.column_percentage[1], relheight=1.0)
+        # f1_3.place(relx=self.column_percentage[0]+self.column_percentage[1], rely=0.0, relwidth=self.column_percentage[2], relheight=1.0)
+
+        for i, f in zip(range(3), (f1_1, f1_2, f1_3)):
+            j, relx = i, 0.0
+            while j: relx, j = relx + self.column_percentage[j-1], j - 1
+            f.place(relx=relx, rely=0.0, relwidth=self.column_percentage[i], relheight=1.0)
 
         self.e1.pack(fill=X, expand=False, padx=3, pady=10)
         self.e2.pack(fill=X, expand=False, padx=3, pady=10)
@@ -301,9 +329,6 @@ class Main(Frame):
         # 初期フォーカスをe1にセット
         self.e1.focus_set()
 
-        # テーマを設定
-        windowstyle = Style()
-        windowstyle.theme_use(self.settings['themename'])
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
     def file_open(self, event=None, file: str|None=None):
@@ -500,16 +525,28 @@ class Main(Frame):
         self.edit_history.appendleft(self.undo_history.popleft())
 
     def cut(self, e=None):
-        print(self.master.focus_get())
-        pass
+        if self.master.focus_get().winfo_class() == 'Text':
+            if self.master.focus_get().tag_ranges(SEL):
+                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
+                self.clipboard_append(t)
+                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
     def copy(self, e=None):
-        pass
+        if self.master.focus_get().winfo_class() == 'Text':
+            if self.master.focus_get().tag_ranges(SEL):
+                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
+                self.clipboard_append(t)
     def paste(self, e=None):
-        pass
+        t = self.clipboard_get()
+        if self.master.focus_get().winfo_class() == 'Text':
+            if self.master.focus_get().tag_ranges(SEL):
+                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
+        self.master.focus_get().insert(INSERT, t)
     def select_all(self, e=None):
-        self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
+        if self.master.focus_get().winfo_class() == 'Text':
+            self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
     def select_line(self, e=None):
-        self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
+        if self.master.focus_get().winfo_class() == 'Text':
+            self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
 
 
 if __name__ == '__main__':
