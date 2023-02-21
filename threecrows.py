@@ -24,9 +24,10 @@ class Main(Frame):
 
         self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(shouldExit=True))
 
+        version = '0.1.1'
         # 設定ファイルを読み込み
         self.settingFile_Error_md = None
-        self.settings = {'columns': {'number': 3, 'percentage': [10, 60, 30]}, 'font': {'name': 'nomal', 'size': 0}, 'recently_files': [], 'statusbar_element_settings': {0: ['hotkeys3'], 1: ['hotkeys2'], 2: ['hotkeys1'], 3: ['st2_letter_count', 'st2_line_count', 'st3_letter_count', 'st3_line_count'], 4: [None], 5: [None]}, 'themename': 'darkly'}
+        self.settings = {'columns': {'number': 3, 'percentage': [10, 60, 30]}, 'font': {'name': 'nomal', 'size': 0}, 'recently_files': [], 'statusbar_element_settings': {0: ['hotkeys3'], 1: ['hotkeys2'], 2: ['hotkeys1'], 3: ['st2_letter_count', 'st2_line_count', 'st3_letter_count', 'st3_line_count'], 4: [None], 5: [None]}, 'themename': 'darkly', 'version': version}
         try:
             with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
@@ -380,7 +381,7 @@ class Main(Frame):
     def save_file(self, path):
         try:
             with open(path, mode='wt', encoding='utf-8') as f:
-                current_data = self.get_current_text()
+                current_data = self.get_current_data()
                 self.data = current_data
                 yaml.safe_dump(current_data, f, encoding='utf-8', allow_unicode=True)
         except FileNotFoundError as e:
@@ -388,7 +389,7 @@ class Main(Frame):
 
     def file_close(self, shouldExit=False):
 
-        current_data = self.get_current_text()
+        current_data = self.get_current_data()
 
         if shouldExit:
             message = '更新内容が保存されていません。アプリを終了しますか。'
@@ -432,7 +433,7 @@ class Main(Frame):
             obj = obj.get('1.0', 'end-1c')
             return obj.count('\n') + 1 if obj else 0
 
-    def get_current_text(self):
+    def get_current_data(self):
         current_data = {}
         for i in range(self.number_of_columns):
             current_data[i] = {}
@@ -441,7 +442,7 @@ class Main(Frame):
         return current_data
 
     def recode_edit_history(self, event=None):
-        current_text = self.get_current_text()
+        current_text = self.get_current_data()
         if current_text != self.edit_history[0]:
             print('recode')
             self.edit_history.appendleft(current_text)
@@ -450,7 +451,7 @@ class Main(Frame):
     def undo(self, event=None):
         if len(self.edit_history) <= 1:
             return
-        current_text = self.get_current_text()
+        current_text = self.get_current_data()
         for i in range(len(self.number_of_columns)):
             if current_text[i]['text'] != self.edit_history[1][i]['text']:
                 print('undo')
@@ -465,7 +466,7 @@ class Main(Frame):
     def repeat(self, event=None):
         if len(self.undo_history) == 0:
             return
-        current_text = self.get_current_text()
+        current_text = self.get_current_data()
         for i in range(len(self.number_of_columns)):
             if current_text[i]['text'] != self.undo_history[0][i]['text']:
                 print('repeat')
@@ -481,25 +482,36 @@ class Main(Frame):
         if self.master.focus_get().winfo_class() == 'Text':
             if self.master.focus_get().tag_ranges(SEL):
                 t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
-                self.clipboard_append(t)
                 self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            t = self.master.focus_get().get()
+            self.master.focus_get().delete(0, END)
+        self.clipboard_append(t)
+        self.recode_edit_history()
     def copy(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
             if self.master.focus_get().tag_ranges(SEL):
                 t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
-                self.clipboard_append(t)
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            t = self.master.focus_get().get()
+        self.clipboard_append(t)
     def paste(self, e=None):
         t = self.clipboard_get()
         if self.master.focus_get().winfo_class() == 'Text':
             if self.master.focus_get().tag_ranges(SEL):
                 self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
         self.master.focus_get().insert(INSERT, t)
+        self.recode_edit_history()
     def select_all(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
             self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            pass
     def select_line(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
             self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            pass
 
 
 if __name__ == '__main__':
