@@ -5,12 +5,16 @@ from tkinter import filedialog
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledText
+from ttkbootstrap import Button
 from ttkbootstrap import Entry
 from ttkbootstrap import Frame
-from ttkbootstrap import Menu
 from ttkbootstrap import Label
-from ttkbootstrap import Button
+from ttkbootstrap import Labelframe
+from ttkbootstrap import Menu
+from ttkbootstrap import Notebook
 from ttkbootstrap import PanedWindow
+from ttkbootstrap import Separator
+from ttkbootstrap import Spinbox
 from ttkbootstrap import Style
 from ttkbootstrap.dialogs.dialogs import MessageDialog
 import yaml
@@ -24,10 +28,10 @@ class Main(Frame):
 
         self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(shouldExit=True))
 
-        version = '0.1.1'
+        version = '0.1.2'
         # 設定ファイルを読み込み
         self.settingFile_Error_md = None
-        self.settings = {'columns': {'number': 3, 'percentage': [10, 60, 30]}, 'font': {'name': 'nomal', 'size': 0}, 'recently_files': [], 'statusbar_element_settings': {0: ['hotkeys3'], 1: ['hotkeys2'], 2: ['hotkeys1'], 3: ['st2_letter_count', 'st2_line_count', 'st3_letter_count', 'st3_line_count'], 4: [None], 5: [None]}, 'themename': 'darkly', 'version': version}
+        self.settings = {'columns': {'number': 3, 'percentage': [10, 60, 30]}, 'font': {'name': 'nomal', 'size': 20}, 'recently_files': [], 'statusbar_element_settings': {0: ['statusbar_message'], 1: ['hotkeys2', 'hotkeys3'], 2: ['hotkeys1'], 3: ['letter_count_2', 'line_count_2', 'letter_count_3', 'line_count_3'], 4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_save_as'], 5: [None]}, 'themename': 'darkly', 'version': version}
         try:
             with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
@@ -121,6 +125,9 @@ class Main(Frame):
         self.menu_edit.add_command(label='取り消しを戻す', command=self.repeat, accelerator='Ctrl+Shift+Z')
         menubar.add_cascade(label='編集', menu=self.menu_edit)
 
+        ## メニューバー - 設定
+        menubar.add_command(label='設定', command=lambda: SettingWindow(), accelerator='Ctrl+O')
+
         self.master.config(menu = menubar)
 
         # 各パーツを製作
@@ -144,17 +151,40 @@ class Main(Frame):
             self.entrys[i].insert(END, self.text_in_entrys[i])
             self.scrolledtexts[i].insert(0., self.text_in_scrolledtexts[i])
 
-        # statusbar要素を作成
+        # 初期フォーカスを列1のタイトルにセット
+        self.entrys[0].focus_set()
+
+        # ステータスバー要素を作成
         self.sb_elements = []
+        ## 文字数カウンター
         def letter_count(i=0):
             if i >= self.number_of_columns: return
             title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
             text = f'{title}: {self.letter_count(obj=self.scrolledtexts[i])}文字'
             return ('label', text)
+        ## 行数カウンター
         def line_count(i=0):
             if i >= self.number_of_columns: return
             title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
             text = f'{title}: {self.line_count(obj=self.scrolledtexts[i])}行'
+            return ('label', text)
+        ## カーソルの現在位置
+        def current_place():
+            widget = self.master.focus_get()
+            if not widget: return ('label', '')
+            index = widget.index(INSERT)
+            text = ''
+            for i in range(len(self.entrys)):
+                if widget.winfo_id() == self.entrys[i].winfo_id():
+                    title = self.entrys[i].get()
+                    title = title if title else f'列{i+1}'
+                    text = f'{title} - タイトル: {int(index)+1}字'
+            for i in range(len(self.scrolledtexts)):
+                if widget.winfo_id() == self.scrolledtexts[i].winfo_children()[0].winfo_id():
+                    title = self.entrys[i].get()
+                    title = title if title else f'列{i+1}'
+                    l = index.split('.')
+                    text = f'{title} - 本文: {l[0]}行 {int(l[1])+1}字'
             return ('label', text)
         ## ショートカットキー
         self.hotkeys1 = ('label', '[Ctrl+O]: 開く  [Ctrl+S]: 上書き保存  [Ctrl+Shift+S]: 名前をつけて保存  [Ctrl+R]: 最後に使ったファイルを開く（起動直後のみ）')
@@ -180,6 +210,7 @@ class Main(Frame):
         def statusbar_element_setting_load(name: str=str):
             if   re.compile(r'letter_count_\d+').search(name): return(letter_count(int(re.search(r'\d+', name).group()) - 1))
             elif re.compile(r'line_count_\d+').search(name): return(line_count(int(re.search(r'\d+', name).group()) - 1))
+            elif name == 'current_place': return current_place()
             elif name == 'hotkeys1': return(self.hotkeys1)
             elif name == 'hotkeys2': return(self.hotkeys2)
             elif name == 'hotkeys3': return(self.hotkeys3)
@@ -251,9 +282,12 @@ class Main(Frame):
         def focus_to_bottom(e):
             e.widget.tk_focusNext().focus_set()
         self.master.bind('<KeyPress>', statusbar_element_reload)
+        self.master.bind('<KeyRelease>', statusbar_element_reload)
+        self.master.bind('<Button>', statusbar_element_reload, '+')
+        self.master.bind('<ButtonRelease>', statusbar_element_reload)
         # self.master.bind('<KeyPress>', lambda e:print(e), '+')
         # self.master.bind('<KeyRelease>', lambda e:print(e), '+')
-        self.master.bind('<KeyRelease>', self.recode_edit_history)
+        self.master.bind('<KeyRelease>', self.recode_edit_history, '+')
         self.master.bind('<Control-z>', self.undo)
         self.master.bind('<Control-Z>', self.repeat)
         self.menu_file.bind_all('<Control-o>', self.file_open)
@@ -288,8 +322,7 @@ class Main(Frame):
             # ScrolledTextを作成
             self.scrolledtexts[i].pack(fill=BOTH, expand=YES)
 
-        # 初期フォーカスをe1にセット
-        self.entrys[0].focus_set()
+        if self.settingFile_Error_md: self.settingFile_Error_md.show()
 
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
@@ -321,6 +354,7 @@ class Main(Frame):
                         self.scrolledtexts[i].delete('1.0', END)
                         self.scrolledtexts[i].insert(0., data[i]['text'])
                     self.edit_history.appendleft(data)
+                    self.data = data
                     print(data)
                 self.master.title(f'ThreeCrows - {self.filepath}')
 
@@ -394,11 +428,11 @@ class Main(Frame):
         if shouldExit:
             message = '更新内容が保存されていません。アプリを終了しますか。'
             title = 'ThreeCrows - 終了確認'
-            buttons=['キャンセル', '保存せず終了:danger', '保存して終了:success']
+            buttons=['保存して終了:success', '保存せず終了:danger', 'キャンセル']
         else:
             message = '更新内容が保存されていません。ファイルを閉じ、ファイルを変更しますか'
             title = 'ThreeCrows - 確認'
-            buttons=['キャンセル', '保存せず変更:danger', '保存して変更:success']
+            buttons=['保存して変更:success', '保存せず変更:danger', 'キャンセル']
 
         if self.data == current_data:
             self.master.destroy() if shouldExit else 0
@@ -442,22 +476,22 @@ class Main(Frame):
         return current_data
 
     def recode_edit_history(self, event=None):
-        current_text = self.get_current_data()
-        if current_text != self.edit_history[0]:
+        current_data = self.get_current_data()
+        if current_data != self.edit_history[0]:
             print('recode')
-            self.edit_history.appendleft(current_text)
+            self.edit_history.appendleft(current_data)
             self.undo_history.clear()
 
     def undo(self, event=None):
         if len(self.edit_history) <= 1:
             return
-        current_text = self.get_current_data()
+        current_data = self.get_current_data()
         for i in range(len(self.number_of_columns)):
-            if current_text[i]['text'] != self.edit_history[1][i]['text']:
+            if current_data[i]['text'] != self.edit_history[1][i]['text']:
                 print('undo')
                 self.scrolledtexts[i].delete('1.0', END)
                 self.scrolledtexts[i].insert(END, self.edit_history[1][i]['text'])
-            if current_text[i]['title'] != self.edit_history[1][i]['title']:
+            if current_data[i]['title'] != self.edit_history[1][i]['title']:
                 print('undo')
                 self.entrys[i].delete('0', END)
                 self.entrys[i].insert(END, self.edit_history[1][i]['title'])
@@ -466,13 +500,13 @@ class Main(Frame):
     def repeat(self, event=None):
         if len(self.undo_history) == 0:
             return
-        current_text = self.get_current_data()
+        current_data = self.get_current_data()
         for i in range(len(self.number_of_columns)):
-            if current_text[i]['text'] != self.undo_history[0][i]['text']:
+            if current_data[i]['text'] != self.undo_history[0][i]['text']:
                 print('repeat')
                 self.scrolledtexts[i].delete('1.0', END)
                 self.scrolledtexts[i].insert(END, self.undo_history[0][i]['text'])
-            if current_text[i]['title'] != self.undo_history[0][i]['title']:
+            if current_data[i]['title'] != self.undo_history[0][i]['title']:
                 print('repeat')
                 self.entrys[i].delete('0', END)
                 self.entrys[i].insert(END, self.undo_history[0][i]['title'])
@@ -488,6 +522,7 @@ class Main(Frame):
             self.master.focus_get().delete(0, END)
         self.clipboard_append(t)
         self.recode_edit_history()
+
     def copy(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
             if self.master.focus_get().tag_ranges(SEL):
@@ -495,6 +530,7 @@ class Main(Frame):
         elif self.master.focus_get().winfo_class() == 'TEntry':
             t = self.master.focus_get().get()
         self.clipboard_append(t)
+
     def paste(self, e=None):
         t = self.clipboard_get()
         if self.master.focus_get().winfo_class() == 'Text':
@@ -502,20 +538,134 @@ class Main(Frame):
                 self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
         self.master.focus_get().insert(INSERT, t)
         self.recode_edit_history()
+
     def select_all(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
             self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
         elif self.master.focus_get().winfo_class() == 'TEntry':
             pass
+
     def select_line(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
             self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
         elif self.master.focus_get().winfo_class() == 'TEntry':
             pass
 
+    # 以下、設定ウィンドウに関する設定
+class SettingWindow(ttk.Toplevel):
+    def __init__(self, title="ThreeCrows - 設定", iconphoto='', size=(600, 600), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        # 設定ファイルの読み込み
+        with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
+            self.settings = yaml.safe_load(f)
+        print(self.settings)
+        number_of_columns = self.settings['columns']['number']
+        percentage_of_columns = self.settings['columns']['percentage']
+        themename = self.settings['themename']
+
+        under = Frame(self)
+        under.pack(side=BOTTOM, fill=X, pady=10)
+        Button(under, text='キャンセル', command=self.destroy).pack(side=RIGHT, padx=10)
+        Button(under, text='OK', command=self.save).pack(side=RIGHT, padx=10)
+
+        f = Labelframe(self, text='設定')
+        f.pack(fill=BOTH, expand=True, padx=5, pady=5)
+        nt = Notebook(f, padding=5)
+        nt.pack(expand=True, fill=BOTH)
+
+        # 以下、設定項目
+        f1 = Frame(nt, padding=5)
+        nt.add(f1, padding=5, text='基本')
+
+        ## 列について
+        lf1 = Labelframe(f1, text='デフォルト列', padding=5)
+        lf1.pack(fill=X)
+
+        ### 列数
+        Label(lf1, text='列数: ').grid(row=0, column=0, columnspan=2, sticky=E)
+        self.setting_number_of_columns = Spinbox(lf1, from_=1, to=100)
+        self.setting_number_of_columns.insert(0, number_of_columns)
+        self.setting_number_of_columns.grid(row=0, column=2, columnspan=1, padx=5, pady=5)
+        lf1.grid_columnconfigure(2, weight=1)
+
+        ### 区切り線
+        Separator(lf1, orient=HORIZONTAL).grid(row=1 ,column=0, columnspan=3, sticky=W+E, padx=0, pady=10)
+
+        ### 列幅
+        self.setting_column_percentage = []
+        self.setting_column_percentage_label = []
+        Label(lf1, text='列幅（合計100にしてください）: ').grid(row=2, column=0, rowspan=number_of_columns)
+        for i in range(number_of_columns):
+            self.setting_column_percentage_label.append(Label(lf1, text=f'列{i+1}: '))
+            self.setting_column_percentage.append(Spinbox(lf1, from_=1, to=100))
+            try:
+                self.setting_column_percentage[i].insert(0, percentage_of_columns[i])
+            except IndexError:
+                self.setting_column_percentage[i].insert(0, '0')
+            self.setting_column_percentage_label[i].grid(row=i+2, column=1)
+            self.setting_column_percentage[i].grid(row=i+2, column=2, padx=5, pady=5)
+
+        def reload_setting_column_percentage(e=None, x:str='up'):
+            for i in range(len(self.setting_column_percentage)):
+                self.setting_column_percentage[i].destroy()
+                self.setting_column_percentage_label[i].destroy()
+            self.setting_column_percentage.clear()
+            self.setting_column_percentage_label.clear()
+            number_of_columns = self.setting_number_of_columns.get()
+            if x == 'up':
+                number_of_columns = int(number_of_columns) + 1
+            elif x == 'down':
+                number_of_columns = int(number_of_columns) - 1
+                if number_of_columns == 0: number_of_columns = 1
+            for i in range(int(number_of_columns)):
+                self.setting_column_percentage_label.append(Label(lf1, text=f'列{i+1}: '))
+                self.setting_column_percentage.append(Spinbox(lf1, from_=1, to=100))
+                try:
+                    self.setting_column_percentage[i].insert(0, percentage_of_columns[i])
+                except IndexError:
+                    self.setting_column_percentage[i].insert(0, '0')
+                self.setting_column_percentage_label[i].grid(row=i+2, column=1)
+                self.setting_column_percentage[i].grid(row=i+2, column=2, padx=5, pady=5)
+
+        f2 = Labelframe(f1, text='表示', padding=5)
+        f2.pack(fill=X)
+
+        ## フォント
+        self.setting_font = ttk.dialogs.dialogs.FontDialog()
+        Button(f2, text='フォント設定', command=self.setting_font.show, bootstyle='secondary').grid(row=0, column=0)
+
+        ## テーマ
+        Label(f2, text='テーマ: ').grid(row=0, column=1, sticky=E)
+        theme_names = []
+        self.settings_theme = Spinbox(f2, values=theme_names)
+        self.settings_theme.insert(0, themename)
+        self.settings_theme.grid(row=0, column=2, pady=5)
+        f2.grid_columnconfigure(0, weight=1)
+        f2.grid_columnconfigure(1, weight=1)
+        f2.grid_columnconfigure(2, weight=1)
+
+        # キーバインド
+        self.setting_number_of_columns.bind('<<Increment>>', lambda e:reload_setting_column_percentage(e, 'up'))
+        self.setting_number_of_columns.bind('<<Decrement>>', lambda e:reload_setting_column_percentage(e, 'down'))
+
+        # 設定ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
+
+    def save(self, e=None):
+        print('save')
+        number_of_columns = int(self.setting_number_of_columns.get())
+        percentage_of_columns = []
+        for i in range(number_of_columns):
+            percentage_of_columns.append(self.setting_column_percentage[i].get())
+        print(number_of_columns)
+        print(percentage_of_columns)
+        pass
 
 if __name__ == '__main__':
     root = ttk.Window(title='ThreeCrows', minsize=(1200, 800))
     app = Main(master=root)
-    if app.settingFile_Error_md: app.settingFile_Error_md.show()
     app.mainloop()
