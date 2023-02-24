@@ -1,7 +1,7 @@
 from collections import deque
 import datetime
 import re
-from tkinter import filedialog
+from tkinter import StringVar, filedialog, font
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledText
@@ -13,29 +13,40 @@ from ttkbootstrap import Labelframe
 from ttkbootstrap import Menu
 from ttkbootstrap import Notebook
 from ttkbootstrap import PanedWindow
+from ttkbootstrap import Scrollbar
 from ttkbootstrap import Separator
 from ttkbootstrap import Spinbox
 from ttkbootstrap import Style
+from ttkbootstrap import Treeview
 from ttkbootstrap.dialogs.dialogs import MessageDialog
 import yaml
 
+__version__ = '0.1.3'
+
 class Main(Frame):
 
-    def __init__(self, master=None, event=None, ):
+    def __init__(self, master=None):
 
         super().__init__(master)
         self.master.geometry('1200x800')
 
-        self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(shouldExit=True))
+        self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(True))
 
-        version = '0.1.2'
         # 設定ファイルを読み込み
         self.settingFile_Error_md = None
-        self.settings = {'columns': {'number': 3, 'percentage': [10, 60, 30]}, 'font': {'name': 'nomal', 'size': 20}, 'recently_files': [], 'statusbar_element_settings': {0: ['statusbar_message'], 1: ['hotkeys2', 'hotkeys3'], 2: ['hotkeys1'], 3: ['letter_count_2', 'line_count_2', 'letter_count_3', 'line_count_3'], 4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_save_as'], 5: [None]}, 'themename': 'darkly', 'version': version}
+        self.settings ={'columns': {'number': 3, 'percentage': [10, 60, 30]},
+                        'font': {'name': 'nomal', 'size': 20}, 'recently_files': [],
+                        'statusbar_element_settings':
+                            {0: ['statusbar_message'],
+                            1: ['hotkeys2', 'hotkeys3'],
+                            2: ['hotkeys1'],
+                            3: ['letter_count_2', 'line_count_2', 'letter_count_3', 'line_count_3'],
+                            4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_save_as'],
+                            5: [None]}, 'themename': 'darkly', 'version': __version__}
         try:
             with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
-                if data.keys() != self.settings.keys(): raise KeyError
+                if set(data.keys()) & set(self.settings.keys()) != set(data.keys()): raise KeyError
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
         except (KeyError, AttributeError) as e:
             print(e)
@@ -64,7 +75,7 @@ class Main(Frame):
         self.windowstyle = Style()
         self.windowstyle.theme_use(self.settings['themename'])
         ## フォント設定
-        self.font = (self.settings['font']['name'], self.settings['font']['size'])
+        self.font = font.Font(family=self.settings['font']['family'], size=self.settings['font']['size'])
         ## 列数
         self.number_of_columns = (self.settings['columns']['number'])
         ## 列比率
@@ -126,7 +137,9 @@ class Main(Frame):
         menubar.add_cascade(label='編集', menu=self.menu_edit)
 
         ## メニューバー - 設定
-        menubar.add_command(label='設定', command=lambda: SettingWindow(), accelerator='Ctrl+O')
+        self.menu_setting = Menu(menubar, tearoff=True)
+        self.menu_setting.add_command(label='設定', command=SettingWindow, accelerator='Ctrl+Shift+P')
+        menubar.add_cascade(label='設定', menu=self.menu_setting)
 
         self.master.config(menu = menubar)
 
@@ -204,7 +217,7 @@ class Main(Frame):
             if elementtype == 'label':
                 return Label(text=text)
             if elementtype == 'button':
-                return Button(text=text, command=commmand, bootstyle='secondary', takefocus=False)
+                return Button(text=text, command=commmand, takefocus=False)
 
         # 設定ファイルからステータスバーの設定を読み込むメソッド
         def statusbar_element_setting_load(name: str=str):
@@ -293,10 +306,12 @@ class Main(Frame):
         self.menu_file.bind_all('<Control-o>', self.file_open)
         self.menu_file.bind_all('<Control-s>', self.file_over_write_save)
         self.menu_file.bind_all('<Control-S>', self.file_save_as)
+        self.master.bind('<Control-P>', SettingWindow)
         self.master.bind('<Control-Right>', focus_to_right)
         self.master.bind('<Control-f>', focus_to_right)
         self.master.bind('<Control-Left>', focus_to_left)
         self.master.bind('<Control-d>', focus_to_left)
+        self.master.bind('<Control-l>', self.select_line)
         for enter in self.entrys:
             enter.bind('<Down>', focus_to_bottom)
             enter.bind('<Return>', focus_to_bottom)
@@ -420,6 +435,27 @@ class Main(Frame):
                 yaml.safe_dump(current_data, f, encoding='utf-8', allow_unicode=True)
         except FileNotFoundError as e:
             print(e)
+
+        # 最近使用したファイルのリストを修正し、settings.yamlに反映
+        self.recently_files.insert(0, self.filepath)
+        # 重複を削除
+        self.recently_files = list(dict.fromkeys(self.recently_files))
+        # 5つ以内になるよう削除
+        del self.recently_files[4:-1]
+        self.settings['recently_files'] = self.recently_files
+        with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
+            yaml.dump(self.settings, f, allow_unicode=True)
+        # 更新
+        for i in self.recently_files:
+            self.menu_file_recently.delete(0)
+        try:
+            self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
+            self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
+            self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
+            self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
+            self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+        except IndexError:
+            pass
 
     def file_close(self, shouldExit=False):
 
@@ -551,23 +587,44 @@ class Main(Frame):
         elif self.master.focus_get().winfo_class() == 'TEntry':
             pass
 
+
     # 以下、設定ウィンドウに関する設定
 class SettingWindow(ttk.Toplevel):
-    def __init__(self, title="ThreeCrows - 設定", iconphoto='', size=(600, 600), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="ThreeCrows - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
         # 設定ファイルの読み込み
         with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
             self.settings = yaml.safe_load(f)
-        print(self.settings)
         number_of_columns = self.settings['columns']['number']
         percentage_of_columns = self.settings['columns']['percentage']
-        themename = self.settings['themename']
+        self.themename = self.settings['themename']
+        self.font_family = self.settings['font']['family']
+        if self.font_family == 'nomal':
+            self.font_family = font.nametofont("TkDefaultFont").actual()['family']
+        self.font_size = self.settings['font']['size']
+        self.statusbar_elements_dict = self.settings['statusbar_element_settings']
+        print(number_of_columns)
+        print(percentage_of_columns)
+        print(self.font_family)
+        print(self.font_size)
+        print(self.themename)
+        print(self.statusbar_elements_dict)
+
+        self.statusbar_elements_dict_converted = {}
+        for i in range(6):
+            l = self.statusbar_elements_dict[i]
+            self.statusbar_elements_dict_converted[i] = [self.convert_statusbar_elements(val) for val in l]
+            while len(self.statusbar_elements_dict_converted[i]) < 4:
+                self.statusbar_elements_dict_converted[i].append('')
+
+        self.tv = None
 
         under = Frame(self)
         under.pack(side=BOTTOM, fill=X, pady=10)
         Button(under, text='キャンセル', command=self.destroy).pack(side=RIGHT, padx=10)
-        Button(under, text='OK', command=self.save).pack(side=RIGHT, padx=10)
+        Button(under, text='OK', command=lambda:self.save(close=True)).pack(side=RIGHT, padx=10)
+        Button(under, text='適用', command=lambda:self.save()).pack(side=RIGHT, padx=10)
 
         f = Labelframe(self, text='設定')
         f.pack(fill=BOTH, expand=True, padx=5, pady=5)
@@ -576,7 +633,7 @@ class SettingWindow(ttk.Toplevel):
 
         # 以下、設定項目
         f1 = Frame(nt, padding=5)
-        nt.add(f1, padding=5, text='基本')
+        nt.add(f1, padding=5, text='    列    ')
 
         ## 列について
         lf1 = Labelframe(f1, text='デフォルト列', padding=5)
@@ -584,7 +641,7 @@ class SettingWindow(ttk.Toplevel):
 
         ### 列数
         Label(lf1, text='列数: ').grid(row=0, column=0, columnspan=2, sticky=E)
-        self.setting_number_of_columns = Spinbox(lf1, from_=1, to=100)
+        self.setting_number_of_columns = Spinbox(lf1, from_=1, to=10)
         self.setting_number_of_columns.insert(0, number_of_columns)
         self.setting_number_of_columns.grid(row=0, column=2, columnspan=1, padx=5, pady=5)
         lf1.grid_columnconfigure(2, weight=1)
@@ -615,6 +672,7 @@ class SettingWindow(ttk.Toplevel):
             number_of_columns = self.setting_number_of_columns.get()
             if x == 'up':
                 number_of_columns = int(number_of_columns) + 1
+                if number_of_columns == 11: number_of_columns = 10
             elif x == 'down':
                 number_of_columns = int(number_of_columns) - 1
                 if number_of_columns == 0: number_of_columns = 1
@@ -628,22 +686,90 @@ class SettingWindow(ttk.Toplevel):
                 self.setting_column_percentage_label[i].grid(row=i+2, column=1)
                 self.setting_column_percentage[i].grid(row=i+2, column=2, padx=5, pady=5)
 
-        f2 = Labelframe(f1, text='表示', padding=5)
-        f2.pack(fill=X)
+        # タブ - 表示
+        f2 = Frame(nt, padding=5)
+        nt.add(f2, padding=5, text='   表示   ')
+        lf2 = Labelframe(f2, text='フォント', padding=5)
+        lf2.pack(fill=X)
 
         ## フォント
-        self.setting_font = ttk.dialogs.dialogs.FontDialog()
-        Button(f2, text='フォント設定', command=self.setting_font.show, bootstyle='secondary').grid(row=0, column=0)
+        ### フォントファミリー
+        Label(lf2, text='ファミリー').pack(anchor=W)
+        self.setting_font_family = self.setting_font_family_treeview(lf2)
+        self.setting_font_family.pack(fill=X)
+        ### フォントサイズ
+        Label(lf2, text='サイズ').pack(anchor=W)
+        self.setting_font_size = Spinbox(lf2, from_=1, to=100, wrap=True)
+        self.setting_font_size.insert(0, self.font_size)
+        self.setting_font_size.pack(anchor=W)
 
         ## テーマ
-        Label(f2, text='テーマ: ').grid(row=0, column=1, sticky=E)
+        lf3 = Labelframe(f2, text='テーマ', padding=5)
+        lf3.pack(fill=X)
+
         theme_names = []
-        self.settings_theme = Spinbox(f2, values=theme_names)
-        self.settings_theme.insert(0, themename)
-        self.settings_theme.grid(row=0, column=2, pady=5)
-        f2.grid_columnconfigure(0, weight=1)
-        f2.grid_columnconfigure(1, weight=1)
-        f2.grid_columnconfigure(2, weight=1)
+        light_theme_names = ['cosmo', 'flatly', 'journal', 'litera', 'lumen', 'minty', 'pulse', 'sandstone', 'united', 'yeti', 'morph', 'simplex', 'cerculean']
+        dark_theme_names = ['solar', 'superhero', 'darkly', 'cyborg', 'vapor']
+        theme_names.extend(light_theme_names)
+        theme_names.append('------')
+        theme_names.extend(dark_theme_names)
+        self.setting_theme = StringVar()
+        self.setting_theme_menu = ttk.OptionMenu(lf3, self.setting_theme, self.themename, *theme_names)
+        self.setting_theme_menu.grid(row=0, column=0, pady=5)
+
+        # タブ - ステータスバー
+        f3 = Frame(nt, padding=5)
+        for i in range(4):
+            f3.grid_columnconfigure(i+1, weight=1)
+        nt.add(f3, padding=5, text='ツールバー・ステータスバー')
+        statusbar_elements=[None, '文字数カウンター - 1列目', '文字数カウンター - 2列目',
+                            '文字数カウンター - 3列目', '文字数カウンター - 4列目',
+                            '文字数カウンター - 5列目', '文字数カウンター - 6列目',
+                            '文字数カウンター - 7列目', '文字数カウンター - 8列目',
+                            '文字数カウンター - 9列目', '文字数カウンター - 10列目',
+                            '行数カウンター - 1列目', '行数カウンター - 2列目',
+                            '行数カウンター - 3列目', '行数カウンター - 4列目',
+                            '行数カウンター - 5列目', '行数カウンター - 6列目',
+                            '行数カウンター - 7列目', '行数カウンター - 8列目',
+                            '行数カウンター - 9列目', '行数カウンター - 10列目',
+                            'カーソルの現在位置', 'ショートカットキー1',
+                            'ショートカットキー2', 'ショートカットキー3',
+                            'ボタン - ファイルを開く', 'ボタン - 上書き保存',
+                            'ボタン - 名前をつけて保存', 'ステータスバー初期メッセージ']
+        self.setting_statusbar_elements_dict = {0: {'var': [], 'menu': []}, 1: {'var': [], 'menu': []}, 2: {'var': [], 'menu': []}, 3: {'var': [], 'menu': []}, 4: {'var': [], 'menu': []}, 5: {'var': [], 'menu': []}}
+
+        Label(f3, text='ツールバー1').grid(row=1, column=0, columnspan=2, sticky=W)
+        Label(f3, text='ツールバー2').grid(row=3, column=0, columnspan=2, sticky=W)
+        Label(f3, text='ステータスバー1').grid(row=5, column=0, columnspan=2, sticky=W)
+        Label(f3, text='ステータスバー2').grid(row=7, column=0, columnspan=2, sticky=W)
+        Label(f3, text='ステータスバー3').grid(row=9, column=0, columnspan=2, sticky=W)
+        Label(f3, text='ステータスバー4').grid(row=11, column=0, columnspan=2, sticky=W)
+        for i in range(24):
+            k = i % 4
+            if i < 4:
+                self.setting_statusbar_elements_dict[4]['var'].append(StringVar())
+                self.setting_statusbar_elements_dict[4]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[4]['var'][k], self.statusbar_elements_dict_converted[4][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[4]['menu'][k].grid(row=2, column=k, padx=5, pady=5, sticky=W+E)
+            elif i < 8:
+                self.setting_statusbar_elements_dict[5]['var'].append(StringVar())
+                self.setting_statusbar_elements_dict[5]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[5]['var'][k], self.statusbar_elements_dict_converted[5][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[5]['menu'][k].grid(row=4, column=k, padx=5, pady=5, sticky=W+E)
+            elif i < 12:
+                self.setting_statusbar_elements_dict[3]['var'].append(StringVar())
+                self.setting_statusbar_elements_dict[3]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[3]['var'][k], self.statusbar_elements_dict_converted[3][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[3]['menu'][k].grid(row=6, column=k, padx=5, pady=5, sticky=W+E)
+            elif i < 16:
+                self.setting_statusbar_elements_dict[2]['var'].append(StringVar())
+                self.setting_statusbar_elements_dict[2]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[2]['var'][k], self.statusbar_elements_dict_converted[2][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[2]['menu'][k].grid(row=8, column=k, padx=5, pady=5, sticky=W+E)
+            elif i < 20:
+                self.setting_statusbar_elements_dict[1]['var'].append(StringVar())
+                self.setting_statusbar_elements_dict[1]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[1]['var'][k], self.statusbar_elements_dict_converted[1][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[1]['menu'][k].grid(row=10, column=k, padx=5, pady=5, sticky=W+E)
+            elif i < 24:
+                self.setting_statusbar_elements_dict[0]['var'].append(StringVar())
+                self.setting_statusbar_elements_dict[0]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[0]['var'][k], self.statusbar_elements_dict_converted[0][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[0]['menu'][k].grid(row=12, column=k, padx=5, pady=5, sticky=W+E)
 
         # キーバインド
         self.setting_number_of_columns.bind('<<Increment>>', lambda e:reload_setting_column_percentage(e, 'up'))
@@ -655,15 +781,121 @@ class SettingWindow(ttk.Toplevel):
         self.transient(app)
         app.wait_window(self)
 
-    def save(self, e=None):
-        print('save')
+    # 設定編集GUIのOKや適用を押した際の動作
+    def save(self, e=None, close=False):
+        print('\nsave')
         number_of_columns = int(self.setting_number_of_columns.get())
         percentage_of_columns = []
         for i in range(number_of_columns):
-            percentage_of_columns.append(self.setting_column_percentage[i].get())
+            percentage_of_columns.append(int(self.setting_column_percentage[i].get()))
+        font_family = self.tv.selection()[0]
+        font_size = int(self.setting_font_size.get())
+        themename = self.setting_theme.get()
+        if themename == '------': themename = self.themename
+        statusbar_method = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
+        for i in range(24):
+            k = i % 4
+            if   i < 4 :
+                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[4]['var'][k].get())
+                if e: statusbar_method[4].append(e)
+            elif i < 8 :
+                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[5]['var'][k].get())
+                if e: statusbar_method[5].append(e)
+            elif i < 12:
+                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[3]['var'][k].get())
+                if e: statusbar_method[3].append(e)
+            elif i < 16:
+                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[2]['var'][k].get())
+                if e: statusbar_method[2].append(e)
+            elif i < 20:
+                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[1]['var'][k].get())
+                if e: statusbar_method[1].append(e)
+            elif i < 24:
+                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[0]['var'][k].get())
+                if e: statusbar_method[0].append(e)
+        print(self.settings)
         print(number_of_columns)
         print(percentage_of_columns)
-        pass
+        print(font_family)
+        print(font_size)
+        print(themename)
+        print(statusbar_method)
+        self.settings['columns']['number'] = number_of_columns
+        self.settings['columns']['percentage'] = percentage_of_columns
+        self.settings['font']['family'] = font_family
+        self.settings['font']['size'] = font_size
+        self.settings['themename'] = themename
+        self.settings['statusbar_element_settings'] = statusbar_method
+        self.settings['version'] = __version__
+        with open(r'.\settings.yaml', mode='wt', encoding='utf-8') as f:
+            yaml.dump(self.settings, f)
+        MessageDialog(  '変更した設定は次回アプリ起動時に読み込まれます\n'+
+                        '設定をすぐに反映したい場合、いったんアプリを終了して再起動してください',
+                        'ThreeCrows - 設定',
+                        ['OK']).show()
+        if close: self.destroy()
+
+    # フォントファミリー選択ツリービュー
+    def setting_font_family_treeview(self, master):
+        self.tv = Treeview(master, height=10, show=[], columns=[0])
+        # 使用可能なフォントを取得
+        families = set(font.families())
+        # 縦書きフォントを除外
+        for f in families.copy():
+            if f.startswith('@'):
+                families.remove(f)
+        # 名前順に並び替え
+        families = sorted(families)
+        # ツリービューに挿入
+        for f in families:
+            self.tv.insert('', iid=f, index=END, tags=[f], values=[f])
+            self.tv.tag_configure(f, font=(f, 10))
+        # 初期位置を設定
+        self.tv.selection_set(self.font_family)
+        self.tv.see(self.font_family)
+        # スクロールバーを設定
+        vbar = Scrollbar(master, command=self.tv.yview, orient=VERTICAL, bootstyle='rounded')
+        vbar.pack(side=RIGHT, fill=Y)
+        self.tv.configure(yscrollcommand=vbar.set)
+        # バインド設定
+        # self.tv.bind('<<TreeviewSelect>>', self.get_treeview)
+        return self.tv
+
+    def convert_statusbar_elements(self, val: str):
+        l =[['文字数カウンター - 1列目', 'letter_count_1'],
+            ['文字数カウンター - 2列目', 'letter_count_2'],
+            ['文字数カウンター - 3列目', 'letter_count_3'],
+            ['文字数カウンター - 4列目', 'letter_count_4'],
+            ['文字数カウンター - 5列目', 'letter_count_5'],
+            ['文字数カウンター - 6列目', 'letter_count_6'],
+            ['文字数カウンター - 7列目', 'letter_count_7'],
+            ['文字数カウンター - 8列目', 'letter_count_8'],
+            ['文字数カウンター - 9列目', 'letter_count_9'],
+            ['文字数カウンター - 10列目', 'letter_count_10'],
+            ['行数カウンター - 1列目', 'line_count_1'],
+            ['行数カウンター - 2列目', 'line_count_2'],
+            ['行数カウンター - 3列目', 'line_count_3'],
+            ['行数カウンター - 4列目', 'line_count_4'],
+            ['行数カウンター - 5列目', 'line_count_5'],
+            ['行数カウンター - 6列目', 'line_count_6'],
+            ['行数カウンター - 7列目', 'line_count_7'],
+            ['行数カウンター - 8列目', 'line_count_8'],
+            ['行数カウンター - 9列目', 'line_count_9'],
+            ['行数カウンター - 10列目', 'line_count_10'],
+            ['カーソルの現在位置', 'current_place'],
+            ['ショートカットキー1', 'hotkeys1'],
+            ['ショートカットキー2', 'hotkeys2'],
+            ['ショートカットキー3', 'hotkeys3'],
+            ['ボタン - ファイルを開く', 'toolbutton_open'],
+            ['ボタン - 上書き保存', 'toolbutton_over_write_save'],
+            ['ボタン - 名前をつけて保存', 'toolbutton_save_as'],
+            ['ステータスバー初期メッセージ', 'statusbar_message']]
+        for x in l:
+            if val == x[0]: return x[1]
+            elif val == x[1]: return x[0]
+        return ''
+
+
 
 if __name__ == '__main__':
     root = ttk.Window(title='ThreeCrows', minsize=(1200, 800))
