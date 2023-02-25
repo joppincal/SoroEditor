@@ -17,11 +17,12 @@ from ttkbootstrap import Scrollbar
 from ttkbootstrap import Separator
 from ttkbootstrap import Spinbox
 from ttkbootstrap import Style
+from ttkbootstrap import Toplevel
 from ttkbootstrap import Treeview
 from ttkbootstrap.dialogs.dialogs import MessageDialog
 import yaml
 
-__version__ = '0.1.3'
+__version__ = '0.2.0'
 
 class Main(Frame):
 
@@ -77,20 +78,19 @@ class Main(Frame):
         ## フォント設定
         self.font = font.Font(family=self.settings['font']['family'], size=self.settings['font']['size'])
         ## 列数
-        self.number_of_columns = (self.settings['columns']['number'])
+        self.number_of_columns = self.settings['columns']['number']
         ## 列比率
         self.column_percentage = [x*0.01 for x in self.settings['columns']['percentage']]
-        ## self.number_of_columns と self.column_percentage の内、数の少ない方に合わせる
-        if self.number_of_columns < len(self.column_percentage):
-            i = self.number_of_columns - len(self.column_percentage)
-            del self.column_percentage[i:]
-        elif self.number_of_columns > len(self.column_percentage):
-            self.number_of_columns = len(self.column_percentage)
+        for _ in range(10-len(self.column_percentage)):
+            self.column_percentage.append(0)
 
         self.filepath = ''
-        self.data = {}
-        for i in range(self.number_of_columns):
-            self.data[i] = {'text': '', 'title': ''}
+        self.data0 = {}
+        for i in range(10):
+            self.data0[i] = {'text': '', 'title': ''}
+        self.data0['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
+        self.data0['version'] = __version__
+        self.data = self.data0
         self.edit_history = deque([self.data])
         self.undo_history = deque([])
 
@@ -103,6 +103,7 @@ class Main(Frame):
         self.menu_file.add_command(label='ファイルを開く', command=self.file_open, accelerator='Ctrl+O')
         self.menu_file.add_command(label='上書き保存', command=self.file_over_write_save, accelerator='Ctrl+S')
         self.menu_file.add_command(label='名前をつけて保存', command=self.file_save_as, accelerator='Ctrl+Shift+S')
+        self.menu_file.add_command(label='プロジェクト設定', command=ProjectFileSettingWindow)
 
         ###メニューバー - ファイル - 最近使用したファイル
         self.menu_file_recently = Menu(self.menu_file, tearoff=False)
@@ -144,25 +145,13 @@ class Main(Frame):
         self.master.config(menu = menubar)
 
         # 各パーツを製作
-        f1 = Frame(self.master, padding=5)
+        self.f1 = Frame(self.master, padding=5)
 
         self.columns = []
         self.entrys = []
         self.scrolledtexts = []
-        self.text_in_entrys = []
-        self.text_in_scrolledtexts = []
 
-        # テキストエディタ部分の要素の準備
-        for i in range(self.number_of_columns):
-            self.columns.append(Frame(f1, padding=5))
-            self.entrys.append(Entry(self.columns[-1], font=self.font))
-            self.scrolledtexts.append(ScrolledText(self.columns[-1], padding=3, autohide=True, wrap=CHAR, font=self.font))
-            self.text_in_entrys.append('')
-            self.text_in_scrolledtexts.append('')
-
-        for i in range(self.number_of_columns):
-            self.entrys[i].insert(END, self.text_in_entrys[i])
-            self.scrolledtexts[i].insert(0., self.text_in_scrolledtexts[i])
+        self.make_text_editor()
 
         # 初期フォーカスを列1のタイトルにセット
         self.entrys[0].focus_set()
@@ -202,7 +191,7 @@ class Main(Frame):
         ## ショートカットキー
         self.hotkeys1 = ('label', '[Ctrl+O]: 開く  [Ctrl+S]: 上書き保存  [Ctrl+Shift+S]: 名前をつけて保存  [Ctrl+R]: 最後に使ったファイルを開く（起動直後のみ）')
         self.hotkeys2 = ('label', '[Ctrl+^]: 検索・置換  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す')
-        self.hotkeys3 = ('label', '[Ctrl+D][Ctrl+←]: 左に移る  [Ctrl+F][Ctrl+→]: 右に移る')
+        self.hotkeys3 = ('label', '[Ctrl+Q][Ctrl+,]: 左に移る  [Ctrl+W][Ctrl+.]: 右に移る')
         ## 顔文字
         self.kaomoji = ''
         ## ツールボタン
@@ -307,14 +296,14 @@ class Main(Frame):
         self.menu_file.bind_all('<Control-s>', self.file_over_write_save)
         self.menu_file.bind_all('<Control-S>', self.file_save_as)
         self.master.bind('<Control-P>', SettingWindow)
-        self.master.bind('<Control-Right>', focus_to_right)
-        self.master.bind('<Control-f>', focus_to_right)
-        self.master.bind('<Control-Left>', focus_to_left)
-        self.master.bind('<Control-d>', focus_to_left)
+        self.master.bind('<Control-w>', focus_to_right)
+        self.master.bind('<Control-.>', focus_to_right)
+        self.master.bind('<Control-q>', focus_to_left)
+        self.master.bind('<Control-,>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
-        for enter in self.entrys:
-            enter.bind('<Down>', focus_to_bottom)
-            enter.bind('<Return>', focus_to_bottom)
+        for entry in self.entrys:
+            entry.bind('<Down>', focus_to_bottom)
+            entry.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
 
         # 各パーツを設置
@@ -325,17 +314,7 @@ class Main(Frame):
         self.statusbar4.pack(fill=X) if len(self.statusbar4.panes()) else print('statusbar4 was not packed')
         self.statusbar5.pack(fill=X) if len(self.statusbar5.panes()) else print('statusbar5 was not packed')
 
-        f1.pack(fill=BOTH, expand=YES)
-
-        for i in range(self.number_of_columns):
-            # 列の枠を作成
-            j, relx = i, 0.0
-            while j: relx, j = relx + self.column_percentage[j-1], j - 1
-            self.columns[i].place(relx=relx, rely=0.0, relwidth=self.column_percentage[i], relheight=1.0)
-            # Entryを作成
-            self.entrys[i].pack(fill=X, expand=False, padx=3, pady=10)
-            # ScrolledTextを作成
-            self.scrolledtexts[i].pack(fill=BOTH, expand=YES)
+        self.f1.pack(fill=BOTH, expand=YES)
 
         if self.settingFile_Error_md: self.settingFile_Error_md.show()
 
@@ -361,16 +340,37 @@ class Main(Frame):
         if self.filepath:
             try:
                 with open(self.filepath, mode='rt', encoding='utf-8') as f:
-                    data = yaml.safe_load(f)
+                    data = self.data0.copy()
+                    self.data = yaml.safe_load(f)
+                    data.update(self.data)
+                    if not 'columns' in data.keys():
+                        data['columns'] = {}
+                    if not 'number' in data['columns'].keys():
+                        data['columns']['number'] = self.settings['columns']['number']
+                    if not 'percentage' in data['columns'].keys():
+                        data['columns']['percentage'] = self.settings['columns']['percentage']
+
+                    self.number_of_columns = data['columns']['number']
+                    self.column_percentage = [x*0.01 for x in data['columns']['percentage']]
+                    for _ in range(10-len(self.column_percentage)):
+                        self.column_percentage.append(0)
+
+                    self.make_text_editor()
+
                     self.edit_history.clear()
-                    for i in range(self.number_of_columns):
-                        self.entrys[i].delete('0', END)
-                        self.entrys[i].insert(END, data[i]['title'])
-                        self.scrolledtexts[i].delete('1.0', END)
-                        self.scrolledtexts[i].insert(0., data[i]['text'])
+
+                    for i in range(self.number_of_columns, 10):
+                        print(f'i: {i}')
+                        mg_exist_hidden_data = MessageDialog(f'列{i+1}にデータがありますが、表示されません\n'
+                                                            f'title: {data[i]["title"]}\n'
+                                                            f'text: {data[i]["text"][0:10]}...\n'
+                                                            '確認するにはプロジェクトファイルを普通のテキストエディタで開いて直接データを見るか、'
+                                                            'ファイル - プロジェクト設定 からこのファイルで表示する列を変更し、'
+                                                            f'列{self.number_of_columns+i-1}が見えるようにしてください', 'ThreeCrows - 隠されたデータ')
+                        if data[i]['title']: mg_exist_hidden_data.show()
+                        elif data[i]['text']: mg_exist_hidden_data.show()
+                    self.entrys[0].focus_set()
                     self.edit_history.appendleft(data)
-                    self.data = data
-                    print(data)
                 self.master.title(f'ThreeCrows - {self.filepath}')
 
                 # 最近使用したファイルのリストを修正し、settings.yamlに反映
@@ -401,7 +401,7 @@ class Main(Frame):
                 if self.filepath in self.recently_files:
                     self.recently_files.remove(self.filepath)
                     self.settings['recently_files'] = self.recently_files
-                with open('.\\settings.yaml', mode='wt', encoding='utf-8') as f:
+                with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
                     yaml.dump(self.settings, f, allow_unicode=True)
 
             except KeyError: # ファイルが読み込めなかった場合
@@ -420,12 +420,16 @@ class Main(Frame):
             print(self.filepath)
             self.save_file(self.filepath)
             self.master.title(f'ThreeCrows - {self.filepath}')
+            return True
+        else: return False
 
     def file_over_write_save(self, event=None):
         if self.filepath:
             self.save_file(self.filepath)
+            return True
         else:
-            self.file_save_as()
+            if self.file_save_as(): return True
+            else: return False
 
     def save_file(self, path):
         try:
@@ -446,7 +450,7 @@ class Main(Frame):
         with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
             yaml.dump(self.settings, f, allow_unicode=True)
         # 更新
-        for i in self.recently_files:
+        for _ in self.recently_files:
             self.menu_file_recently.delete(0)
         try:
             self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
@@ -487,8 +491,6 @@ class Main(Frame):
             else:
                 pass
 
-        shouldExit = False
-
     def open_last_file(self, event=None):
         if not self.filepath:
             self.file_open(file=self.recently_files[0])
@@ -505,10 +507,21 @@ class Main(Frame):
 
     def get_current_data(self):
         current_data = {}
+        # 辞書の元を作る
+        for i in range(10):
+            current_data[i] = {'text': '', 'title': ''}
+        # ファイルの初期データで上書きする（表示されていない列のデータ消滅対策）
+        current_data.update(self.data)
+        # 表示されている列のデータで上書きする
         for i in range(self.number_of_columns):
             current_data[i] = {}
             current_data[i]['text'] = self.scrolledtexts[i].get('1.0',END).removesuffix('\n')
             current_data[i]['title'] = self.entrys[i].get()
+        # 設定部分を書き込む
+        current_data['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
+        for _ in range(10-len(current_data['columns']['percentage'])):
+            current_data['columns']['percentage'].append(0)
+        current_data['version'] = __version__
         return current_data
 
     def recode_edit_history(self, event=None):
@@ -522,7 +535,7 @@ class Main(Frame):
         if len(self.edit_history) <= 1:
             return
         current_data = self.get_current_data()
-        for i in range(len(self.number_of_columns)):
+        for i in range(self.number_of_columns):
             if current_data[i]['text'] != self.edit_history[1][i]['text']:
                 print('undo')
                 self.scrolledtexts[i].delete('1.0', END)
@@ -587,9 +600,41 @@ class Main(Frame):
         elif self.master.focus_get().winfo_class() == 'TEntry':
             pass
 
+    # テキストエディタ部分の要素の準備
+    def make_text_editor(self):
+        for w in self.columns:
+            w.destroy()
+        for w in self.entrys:
+            w.destroy()
+        for w in self.scrolledtexts:
+            w.destroy()
+
+        self.columns = []
+        self.entrys = []
+        self.scrolledtexts = []
+
+        for _ in range(self.number_of_columns):
+            self.columns.append(Frame(self.f1, padding=5))
+            self.entrys.append(Entry(self.columns[-1], font=self.font))
+            self.scrolledtexts.append(ScrolledText(self.columns[-1], padding=3, autohide=True, wrap=CHAR, font=self.font))
+
+        for i in range(self.number_of_columns):
+            # 列の枠を作成
+            j, relx = i, 0.0
+            while j: relx, j = relx + self.column_percentage[j-1], j - 1
+            self.columns[i].place(relx=relx, rely=0.0, relwidth=self.column_percentage[i], relheight=1.0)
+            # Entryを作成
+            self.entrys[i].pack(fill=X, expand=False, padx=3, pady=10)
+            # ScrolledTextを作成
+            self.scrolledtexts[i].pack(fill=BOTH, expand=YES)
+
+        for i in range(self.number_of_columns):
+            self.entrys[i].insert(END, self.data[i]['title'])
+            self.scrolledtexts[i].insert(0., self.data[i]['text'])
+
 
     # 以下、設定ウィンドウに関する設定
-class SettingWindow(ttk.Toplevel):
+class SettingWindow(Toplevel):
     def __init__(self, title="ThreeCrows - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
@@ -641,10 +686,10 @@ class SettingWindow(ttk.Toplevel):
 
         ### 列数
         Label(lf1, text='列数: ').grid(row=0, column=0, columnspan=2, sticky=E)
-        self.setting_number_of_columns = Spinbox(lf1, from_=1, to=10)
+        lf1.grid_columnconfigure(2, weight=1)
+        self.setting_number_of_columns = Spinbox(lf1, from_=1, to=10,)
         self.setting_number_of_columns.insert(0, number_of_columns)
         self.setting_number_of_columns.grid(row=0, column=2, columnspan=1, padx=5, pady=5)
-        lf1.grid_columnconfigure(2, weight=1)
 
         ### 区切り線
         Separator(lf1, orient=HORIZONTAL).grid(row=1 ,column=0, columnspan=3, sticky=W+E, padx=0, pady=10)
@@ -786,8 +831,10 @@ class SettingWindow(ttk.Toplevel):
         print('\nsave')
         number_of_columns = int(self.setting_number_of_columns.get())
         percentage_of_columns = []
-        for i in range(number_of_columns):
+        for i in range(len(self.setting_column_percentage)):
             percentage_of_columns.append(int(self.setting_column_percentage[i].get()))
+        for _ in range(10-len(percentage_of_columns)):
+            percentage_of_columns.append(0)
         font_family = self.tv.selection()[0]
         font_size = int(self.setting_font_size.get())
         themename = self.setting_theme.get()
@@ -895,6 +942,91 @@ class SettingWindow(ttk.Toplevel):
             elif val == x[1]: return x[0]
         return ''
 
+class ProjectFileSettingWindow(Toplevel):
+    def __init__(self, title="ThreeCrows - プロジェクト設定", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        if app.get_current_data() != app.data:
+            self.withdraw()
+            mg = MessageDialog('プロジェクトファイル設定を変更する前にプロジェクトファイルを保存します',
+                        'ThreeCrows - プロジェクトファイル設定',
+                        ['OK:success', 'キャンセル:secondary'],)
+            mg.show()
+            print(mg.result)
+            if mg.result == 'OK':
+                x = app.file_over_write_save()
+                if x: self.deiconify()
+                else:
+                    self.destroy()
+                    return
+            elif mg.result == 'キャンセル':
+                self.destroy()
+                return
+
+        under = Frame(self)
+        under.pack(side=BOTTOM, fill=X, pady=10)
+        Button(under, text='キャンセル', command=self.destroy).pack(side=RIGHT, padx=10)
+        Button(under, text='OK', command=lambda:self.save(close=True)).pack(side=RIGHT, padx=10)
+        Button(under, text='適用', command=lambda:self.save()).pack(side=RIGHT, padx=10)
+
+        self.f0 = Frame(self, padding=5)
+        self.f0.pack(fill=BOTH)
+        self.f1 = Frame(self.f0)
+        self.f1.pack(fill=BOTH)
+        Label(self.f1, text='列数: ').grid(row=0, column=0, columnspan=2, sticky=E)
+        self.number_of_columns = StringVar()
+        self.number_of_columns.set(value=app.number_of_columns)
+        self.colmun_percentage = []
+        for i in range(10):
+            self.colmun_percentage.append(StringVar())
+            self.colmun_percentage[i].set(int(app.column_percentage[i]*100))
+
+        ### 列数
+        sb_n = Spinbox(self.f1, from_=1, to=10, textvariable=self.number_of_columns, command=self.make_sb_p, state=READONLY, takefocus=False)
+        sb_n.grid(row=0, column=2, columnspan=1, padx=5, pady=5)
+
+        ### 区切り線
+        Separator(self.f1, orient=HORIZONTAL).grid(row=1 ,column=0, columnspan=3, sticky=W+E, padx=0, pady=10)
+
+        ### 列幅
+        self.sb_p = []
+        self.sb_p_l = []
+        Label(self.f1, text='列幅（合計100にしてください）: ').grid(row=2, column=0, rowspan=self.number_of_columns.get())
+        self.make_sb_p()
+
+
+        # ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
+
+    def make_sb_p(self, e=None):
+        for i in range(len(self.sb_p)):
+            self.sb_p[i].destroy()
+            self.sb_p_l[i].destroy()
+        self.sb_p.clear()
+        self.sb_p_l.clear()
+        for i in range(int(self.number_of_columns.get())):
+            self.sb_p_l.append(Label(self.f1, text=f'列{i+1}: '))
+            self.sb_p_l[i].grid(row=i+2, column=1)
+            self.sb_p.append(Spinbox(self.f1, from_=1, to=100, textvariable=self.colmun_percentage[i], state=READONLY, takefocus=False))
+            self.sb_p[i].grid(row=i+2, column=2, padx=5, pady=5)
+
+    def save(self, e=None, close=False):
+        print('\nsave')
+        number_of_columns = int(self.number_of_columns.get())
+        percentage_of_columns = []
+        for i in range(len(self.colmun_percentage)):
+            percentage_of_columns.append(int(self.colmun_percentage[i].get())/100)
+        for _ in range(10-len(percentage_of_columns)):
+            percentage_of_columns.append(0)
+        print(number_of_columns)
+        print(percentage_of_columns)
+        app.number_of_columns = number_of_columns
+        app.column_percentage = percentage_of_columns
+        app.make_text_editor()
+        if close: self.destroy()
 
 
 if __name__ == '__main__':
