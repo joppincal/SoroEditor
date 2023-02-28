@@ -2,6 +2,7 @@ from collections import deque
 import datetime
 import re
 from tkinter import StringVar, filedialog, font
+import tkinter
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledText
@@ -17,12 +18,13 @@ from ttkbootstrap import Scrollbar
 from ttkbootstrap import Separator
 from ttkbootstrap import Spinbox
 from ttkbootstrap import Style
+from ttkbootstrap import Text
 from ttkbootstrap import Toplevel
 from ttkbootstrap import Treeview
 from ttkbootstrap.dialogs.dialogs import MessageDialog
 import yaml
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 class Main(Frame):
 
@@ -35,15 +37,20 @@ class Main(Frame):
 
         # 設定ファイルを読み込み
         self.settingFile_Error_md = None
-        self.settings ={'columns': {'number': 3, 'percentage': [10, 60, 30]},
-                        'font': {'name': 'nomal', 'size': 20}, 'recently_files': [],
+        self.settings ={'between_lines': 10,
+                        'columns': {'number': 3, 'percentage': [10, 60, 30]},
+                        'font': {'name': 'nomal', 'size': 20},
+                        'recently_files': [],
                         'statusbar_element_settings':
                             {0: ['statusbar_message'],
                             1: ['hotkeys2', 'hotkeys3'],
                             2: ['hotkeys1'],
                             3: ['letter_count_2', 'line_count_2', 'letter_count_3', 'line_count_3'],
                             4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_save_as'],
-                            5: [None]}, 'themename': 'darkly', 'version': __version__}
+                            5: [None]},
+                            'themename': 'darkly',
+                            'version': __version__,
+                            'wrap': NONE}
         try:
             with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
@@ -83,6 +90,8 @@ class Main(Frame):
         self.column_percentage = [x*0.01 for x in self.settings['columns']['percentage']]
         for _ in range(10-len(self.column_percentage)):
             self.column_percentage.append(0)
+        self.wrap = self.settings['wrap']
+        self.between_lines = self.settings['between_lines']
 
         self.filepath = ''
         self.data0 = {}
@@ -146,10 +155,12 @@ class Main(Frame):
 
         # 各パーツを製作
         self.f1 = Frame(self.master, padding=5)
+        self.f2 = Frame(self.master)
+        self.vbar = Scrollbar(self.f2, command=self.vbar_command, style=ROUND, takefocus=False)
 
         self.columns = []
         self.entrys = []
-        self.scrolledtexts = []
+        self.maintexts = []
 
         self.make_text_editor()
 
@@ -162,13 +173,13 @@ class Main(Frame):
         def letter_count(i=0):
             if i >= self.number_of_columns: return
             title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
-            text = f'{title}: {self.letter_count(obj=self.scrolledtexts[i])}文字'
+            text = f'{title}: {self.letter_count(obj=self.maintexts[i])}文字'
             return ('label', text)
         ## 行数カウンター
         def line_count(i=0):
             if i >= self.number_of_columns: return
             title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
-            text = f'{title}: {self.line_count(obj=self.scrolledtexts[i])}行'
+            text = f'{title}: {self.line_count(obj=self.maintexts[i])}行'
             return ('label', text)
         ## カーソルの現在位置
         def current_place():
@@ -181,8 +192,8 @@ class Main(Frame):
                     title = self.entrys[i].get()
                     title = title if title else f'列{i+1}'
                     text = f'{title} - タイトル: {int(index)+1}字'
-            for i in range(len(self.scrolledtexts)):
-                if widget.winfo_id() == self.scrolledtexts[i].winfo_children()[0].winfo_id():
+            for i in range(len(self.maintexts)):
+                if widget.winfo_id() == self.maintexts[i].winfo_id():
                     title = self.entrys[i].get()
                     title = title if title else f'列{i+1}'
                     l = index.split('.')
@@ -278,11 +289,23 @@ class Main(Frame):
             widget = self.master.focus_get()
             print(widget, 'has focus')
         def focus_to_right(e):
+            if type(e.widget.tk_focusNext().tk_focusNext()) == tkinter.Text:
+                insert = e.widget.index(INSERT)
+                e.widget.tk_focusNext().tk_focusNext().mark_set(INSERT, insert)
             e.widget.tk_focusNext().tk_focusNext().focus_set()
         def focus_to_left(e):
+            if type(e.widget.tk_focusNext().tk_focusNext()) == tkinter.Text:
+                insert = e.widget.index(INSERT)
+                e.widget.tk_focusNext().tk_focusNext().mark_set(INSERT, insert)
             e.widget.tk_focusPrev().tk_focusPrev().focus_set()
         def focus_to_bottom(e):
             e.widget.tk_focusNext().focus_set()
+        def ctr_enter(e):
+            if type(e.widget) == tkinter.Text:
+                insert = e.widget.index(INSERT)
+                e.widget.delete(insert+'-1c', insert)
+                for w in self.maintexts:
+                    w.insert(insert, '\n')
         self.master.bind('<KeyPress>', statusbar_element_reload)
         self.master.bind('<KeyRelease>', statusbar_element_reload)
         self.master.bind('<Button>', statusbar_element_reload, '+')
@@ -301,6 +324,7 @@ class Main(Frame):
         self.master.bind('<Control-q>', focus_to_left)
         self.master.bind('<Control-,>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
+        self.master.bind('<Control-Return>', ctr_enter)
         for entry in self.entrys:
             entry.bind('<Down>', focus_to_bottom)
             entry.bind('<Return>', focus_to_bottom)
@@ -314,6 +338,8 @@ class Main(Frame):
         self.statusbar4.pack(fill=X) if len(self.statusbar4.panes()) else print('statusbar4 was not packed')
         self.statusbar5.pack(fill=X) if len(self.statusbar5.panes()) else print('statusbar5 was not packed')
 
+        self.f2.pack(fill=Y, side=RIGHT, pady=18)
+        self.vbar.pack(fill=Y, expand=YES)
         self.f1.pack(fill=BOTH, expand=YES)
 
         if self.settingFile_Error_md: self.settingFile_Error_md.show()
@@ -360,7 +386,6 @@ class Main(Frame):
                     self.edit_history.clear()
 
                     for i in range(self.number_of_columns, 10):
-                        print(f'i: {i}')
                         mg_exist_hidden_data = MessageDialog(f'列{i+1}にデータがありますが、表示されません\n'
                                                             f'title: {data[i]["title"]}\n'
                                                             f'text: {data[i]["text"][0:10]}...\n'
@@ -484,10 +509,10 @@ class Main(Frame):
                     self.master.destroy()
                 else: print(buttons[1])
             elif mg.result in ('保存して終了', '保存して変更'):
-                self.file_over_write_save()
-                if shouldExit:
-                    self.master.destroy()
-                else: print(buttons[2])
+                if self.file_over_write_save():
+                    if shouldExit:
+                        self.master.destroy()
+                    else: print(buttons[2])
             else:
                 pass
 
@@ -496,12 +521,12 @@ class Main(Frame):
             self.file_open(file=self.recently_files[0])
 
     # 以下、エディターの編集に関するメソッド
-    def letter_count(self, obj:ScrolledText|str=''):
-        if type(obj) == ttk.scrolled.ScrolledText: return len(obj.get('1.0', 'end-1c').replace('\n', ''))
+    def letter_count(self, obj:ScrolledText|Text|str=''):
+        if type(obj) == ttk.scrolled.ScrolledText or ttk.Text: return len(obj.get('1.0', 'end-1c').replace('\n', ''))
         elif type(obj) == str: return len(obj)
 
-    def line_count(self, obj:ScrolledText|str=''):
-        if type(obj) == ttk.scrolled.ScrolledText:
+    def line_count(self, obj:ScrolledText|Text|str=''):
+        if type(obj) == ttk.scrolled.ScrolledText or ttk.Text:
             obj = obj.get('1.0', 'end-1c')
             return obj.count('\n') + 1 if obj else 0
 
@@ -515,7 +540,7 @@ class Main(Frame):
         # 表示されている列のデータで上書きする
         for i in range(self.number_of_columns):
             current_data[i] = {}
-            current_data[i]['text'] = self.scrolledtexts[i].get('1.0',END).removesuffix('\n')
+            current_data[i]['text'] = self.maintexts[i].get('1.0',END).removesuffix('\n')
             current_data[i]['title'] = self.entrys[i].get()
         # 設定部分を書き込む
         current_data['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
@@ -535,31 +560,37 @@ class Main(Frame):
         if len(self.edit_history) <= 1:
             return
         current_data = self.get_current_data()
+        if type(self.master.focus_get()) == tkinter.Text:
+            insert = self.master.focus_get().index(INSERT)
         for i in range(self.number_of_columns):
             if current_data[i]['text'] != self.edit_history[1][i]['text']:
                 print('undo')
-                self.scrolledtexts[i].delete('1.0', END)
-                self.scrolledtexts[i].insert(END, self.edit_history[1][i]['text'])
+                self.maintexts[i].delete('1.0', END)
+                self.maintexts[i].insert(END, self.edit_history[1][i]['text'])
             if current_data[i]['title'] != self.edit_history[1][i]['title']:
                 print('undo')
                 self.entrys[i].delete('0', END)
                 self.entrys[i].insert(END, self.edit_history[1][i]['title'])
         self.undo_history.appendleft(self.edit_history.popleft())
+        self.master.focus_get().mark_set(INSERT, insert)
 
     def repeat(self, event=None):
         if len(self.undo_history) == 0:
             return
         current_data = self.get_current_data()
-        for i in range(len(self.number_of_columns)):
+        if type(self.master.focus_get()) == tkinter.Text:
+            insert = self.master.focus_get().index(INSERT)
+        for i in range(self.number_of_columns):
             if current_data[i]['text'] != self.undo_history[0][i]['text']:
                 print('repeat')
-                self.scrolledtexts[i].delete('1.0', END)
-                self.scrolledtexts[i].insert(END, self.undo_history[0][i]['text'])
+                self.maintexts[i].delete('1.0', END)
+                self.maintexts[i].insert(END, self.undo_history[0][i]['text'])
             if current_data[i]['title'] != self.undo_history[0][i]['title']:
                 print('repeat')
                 self.entrys[i].delete('0', END)
                 self.entrys[i].insert(END, self.undo_history[0][i]['title'])
         self.edit_history.appendleft(self.undo_history.popleft())
+        self.master.focus_get().mark_set(INSERT, insert)
 
     def cut(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
@@ -606,17 +637,19 @@ class Main(Frame):
             w.destroy()
         for w in self.entrys:
             w.destroy()
-        for w in self.scrolledtexts:
+        for w in self.maintexts:
             w.destroy()
 
         self.columns = []
         self.entrys = []
-        self.scrolledtexts = []
+        self.maintexts = []
 
         for _ in range(self.number_of_columns):
             self.columns.append(Frame(self.f1, padding=5))
             self.entrys.append(Entry(self.columns[-1], font=self.font))
-            self.scrolledtexts.append(ScrolledText(self.columns[-1], padding=3, autohide=True, wrap=CHAR, font=self.font))
+            self.maintexts.append(Text(self.columns[-1], wrap=self.wrap,
+                                    font=self.font, yscrollcommand=self.yscrollcommand,
+                                    spacing3=self.between_lines))
 
         for i in range(self.number_of_columns):
             # 列の枠を作成
@@ -626,12 +659,20 @@ class Main(Frame):
             # Entryを作成
             self.entrys[i].pack(fill=X, expand=False, padx=3, pady=10)
             # ScrolledTextを作成
-            self.scrolledtexts[i].pack(fill=BOTH, expand=YES)
+            self.maintexts[i].pack(fill=BOTH, expand=YES, padx=3, pady=5)
 
         for i in range(self.number_of_columns):
             self.entrys[i].insert(END, self.data[i]['title'])
-            self.scrolledtexts[i].insert(0., self.data[i]['text'])
+            self.maintexts[i].insert(0., self.data[i]['text'])
 
+    # 縦スクロールバーが動いたときのメソッド
+    def vbar_command(self, e=None, a=None, b=None):
+        for i in range(3): self.maintexts[i].yview(e, a, b)
+
+    # テキストウィジェットを直接動かしたときのメソッド
+    def yscrollcommand(self, a, b):
+        for i in range(3): self.maintexts[i].yview_moveto(a)
+        self.vbar.set(a, b)
 
     # 以下、設定ウィンドウに関する設定
 class SettingWindow(Toplevel):
@@ -649,12 +690,8 @@ class SettingWindow(Toplevel):
             self.font_family = font.nametofont("TkDefaultFont").actual()['family']
         self.font_size = self.settings['font']['size']
         self.statusbar_elements_dict = self.settings['statusbar_element_settings']
-        print(number_of_columns)
-        print(percentage_of_columns)
-        print(self.font_family)
-        print(self.font_size)
-        print(self.themename)
-        print(self.statusbar_elements_dict)
+        self.between_lines = self.settings['between_lines']
+        self.wrap = self.settings['wrap']
 
         self.statusbar_elements_dict_converted = {}
         for i in range(6):
@@ -747,6 +784,16 @@ class SettingWindow(Toplevel):
         self.setting_font_size = Spinbox(lf2, from_=1, to=100, wrap=True)
         self.setting_font_size.insert(0, self.font_size)
         self.setting_font_size.pack(anchor=W)
+        ### 行間
+        Label(lf2, text='行間').pack(anchor=W)
+        self.setting_between_lines = Spinbox(lf2, from_=0, to=100, wrap=True)
+        self.setting_between_lines.insert(0, self.between_lines)
+        self.setting_between_lines.pack(anchor=W)
+        ### 折り返し
+        Label(lf2, text='折り返し').pack(anchor=W)
+        self.setting_wrap = StringVar()
+        self.setting_wrap_menu = ttk.OptionMenu(lf2, self.setting_wrap, self.wrap, *['none', 'char', 'word'])
+        self.setting_wrap_menu.pack(anchor=W)
 
         ## テーマ
         lf3 = Labelframe(f2, text='テーマ', padding=5)
@@ -837,6 +884,8 @@ class SettingWindow(Toplevel):
             percentage_of_columns.append(0)
         font_family = self.tv.selection()[0]
         font_size = int(self.setting_font_size.get())
+        between_lines = int(self.setting_between_lines.get())
+        wrap = self.setting_wrap.get()
         themename = self.setting_theme.get()
         if themename == '------': themename = self.themename
         statusbar_method = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
@@ -860,17 +909,12 @@ class SettingWindow(Toplevel):
             elif i < 24:
                 e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[0]['var'][k].get())
                 if e: statusbar_method[0].append(e)
-        print(self.settings)
-        print(number_of_columns)
-        print(percentage_of_columns)
-        print(font_family)
-        print(font_size)
-        print(themename)
-        print(statusbar_method)
         self.settings['columns']['number'] = number_of_columns
         self.settings['columns']['percentage'] = percentage_of_columns
         self.settings['font']['family'] = font_family
         self.settings['font']['size'] = font_size
+        self.settings['between_lines'] = between_lines
+        self.settings['wrap'] = wrap
         self.settings['themename'] = themename
         self.settings['statusbar_element_settings'] = statusbar_method
         self.settings['version'] = __version__
@@ -904,8 +948,6 @@ class SettingWindow(Toplevel):
         vbar = Scrollbar(master, command=self.tv.yview, orient=VERTICAL, bootstyle='rounded')
         vbar.pack(side=RIGHT, fill=Y)
         self.tv.configure(yscrollcommand=vbar.set)
-        # バインド設定
-        # self.tv.bind('<<TreeviewSelect>>', self.get_treeview)
         return self.tv
 
     def convert_statusbar_elements(self, val: str):
