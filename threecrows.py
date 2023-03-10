@@ -1,46 +1,41 @@
 from collections import deque
 import datetime
+from os import chdir
+from os.path import dirname
 import re
-from tkinter import StringVar, filedialog, font
+import sys
 import tkinter
+from tkinter import BooleanVar, StringVar, filedialog, font
+from ttkbootstrap import Button, Checkbutton, Entry, Frame, Label, Labelframe,\
+    Menu, Notebook, OptionMenu, PanedWindow, Scrollbar, Separator, Spinbox, Style,\
+    Text, Toplevel, Treeview
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from ttkbootstrap.scrolled import ScrolledText
-from ttkbootstrap import Button
-from ttkbootstrap import Entry
-from ttkbootstrap import Frame
-from ttkbootstrap import Label
-from ttkbootstrap import Labelframe
-from ttkbootstrap import Menu
-from ttkbootstrap import Notebook
-from ttkbootstrap import PanedWindow
-from ttkbootstrap import Scrollbar
-from ttkbootstrap import Separator
-from ttkbootstrap import Spinbox
-from ttkbootstrap import Style
-from ttkbootstrap import Text
-from ttkbootstrap import Toplevel
-from ttkbootstrap import Treeview
 from ttkbootstrap.dialogs.dialogs import MessageDialog
+from ttkbootstrap.scrolled import ScrolledText
+from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 
 class Main(Frame):
 
     def __init__(self, master=None):
 
         super().__init__(master)
-        self.master.geometry('1200x800')
+        self.master.geometry('1600x1000')
 
         self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(True))
 
         # 設定ファイルを読み込み
+        chdir(dirname(sys.argv[0]))
         self.settingFile_Error_md = None
         self.settings ={'between_lines': 10,
                         'columns': {'number': 3, 'percentage': [10, 60, 30]},
-                        'font': {'name': 'nomal', 'size': 20},
+                        'display_line_number': False,
+                        'font': {'family': 'nomal', 'size': 20},
                         'recently_files': [],
+                        'selection_line_highlight': True,
                         'statusbar_element_settings':
                             {0: ['statusbar_message'],
                             1: ['hotkeys2', 'hotkeys3'],
@@ -48,13 +43,14 @@ class Main(Frame):
                             3: ['letter_count_2', 'line_count_2', 'letter_count_3', 'line_count_3'],
                             4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_save_as'],
                             5: [None]},
-                            'themename': 'darkly',
-                            'version': __version__,
-                            'wrap': NONE}
+                        'themename': 'darkly',
+                        'version': __version__,
+                        'wrap': NONE}
         try:
-            with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
+            with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
-                if set(data.keys()) & set(self.settings.keys()) != set(data.keys()): raise KeyError
+                if set(data.keys()) & set(self.settings.keys()) != set(data.keys()):
+                    raise KeyError
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
         except (KeyError, AttributeError) as e:
             print(e)
@@ -72,7 +68,7 @@ class Main(Frame):
         ## 存在しない場合新規作成
         except FileNotFoundError as e:
             print(e)
-            with open(r'.\settings.yaml', mode='wt', encoding='utf-8') as f:
+            with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
                 yaml.safe_dump(self.settings, f, allow_unicode=True)
             settingFile_Error_message = '設定ファイルが存在しなかったため作成しました'
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
@@ -90,8 +86,14 @@ class Main(Frame):
         self.column_percentage = [x*0.01 for x in self.settings['columns']['percentage']]
         for _ in range(10-len(self.column_percentage)):
             self.column_percentage.append(0)
+        ## 折り返し
         self.wrap = self.settings['wrap']
+        ## 行間
         self.between_lines = self.settings['between_lines']
+        ## 行番号
+        self.display_line_number = self.settings['display_line_number']
+        ## 選択行の強調
+        self.selection_line_highlight = self.settings['selection_line_highlight']
 
         self.filepath = ''
         self.data0 = {}
@@ -102,6 +104,11 @@ class Main(Frame):
         self.data = self.data0
         self.edit_history = deque([self.data])
         self.undo_history = deque([])
+        self.recently_files: list = self.settings['recently_files']
+        try:
+            self.initialdir = dirname(self.recently_files[0])
+        except (IndexError, TypeError):
+            self.initialdir = ''
 
         # メニューバーの作成
         menubar = Menu()
@@ -118,7 +125,6 @@ class Main(Frame):
         self.menu_file_recently = Menu(self.menu_file, tearoff=False)
 
         try:
-            self.recently_files: list = self.settings['recently_files']
             self.menu_file_recently.add_command(label=self.recently_files[0], command=lambda:self.file_open(file=self.recently_files[0]), accelerator='Ctrl+R')
             self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
             self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
@@ -181,11 +187,19 @@ class Main(Frame):
             title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
             text = f'{title}: {self.line_count(obj=self.maintexts[i])}行'
             return ('label', text)
+        ## 行数カウンター（デバッグ）
+        def line_count_debug(i=0):
+            if i >= self.number_of_columns: return
+            title = self.entrys[i].get() if self.entrys[i].get() else f'列{i+1}'
+            text = f'{title}: {self.line_count(obj=self.maintexts[i], debug=True)}行'
+            return ('label', text)
         ## カーソルの現在位置
         def current_place():
             widget = self.master.focus_get()
-            if not widget: return ('label', '')
-            index = widget.index(INSERT)
+            try:
+                index = widget.index(INSERT)
+            except AttributeError:
+                return ('label', ' '*40)
             text = ''
             for i in range(len(self.entrys)):
                 if widget.winfo_id() == self.entrys[i].winfo_id():
@@ -223,6 +237,7 @@ class Main(Frame):
         def statusbar_element_setting_load(name: str=str):
             if   re.compile(r'letter_count_\d+').search(name): return(letter_count(int(re.search(r'\d+', name).group()) - 1))
             elif re.compile(r'line_count_\d+').search(name): return(line_count(int(re.search(r'\d+', name).group()) - 1))
+            elif re.compile(r'line_count_debug_\d+').search(name): return(line_count_debug(int(re.search(r'\d+', name).group()) - 1))
             elif name == 'current_place': return current_place()
             elif name == 'hotkeys1': return(self.hotkeys1)
             elif name == 'hotkeys2': return(self.hotkeys2)
@@ -280,7 +295,7 @@ class Main(Frame):
         self.statusbar3 = PanedWindow(self.master, height=30, orient=HORIZONTAL)
         self.statusbar4 = PanedWindow(self.master, height=50, orient=HORIZONTAL)
         self.statusbar5 = PanedWindow(self.master, height=50, orient=HORIZONTAL)
-        for i in range(5):
+        for i in range(6):
             statusbar_element_setting(num=i)
 
 
@@ -289,27 +304,34 @@ class Main(Frame):
             widget = self.master.focus_get()
             print(widget, 'has focus')
         def focus_to_right(e):
-            if type(e.widget.tk_focusNext().tk_focusNext()) == tkinter.Text:
+            if type(e.widget) == tkinter.Text:
                 insert = e.widget.index(INSERT)
                 e.widget.tk_focusNext().tk_focusNext().mark_set(INSERT, insert)
             e.widget.tk_focusNext().tk_focusNext().focus_set()
         def focus_to_left(e):
-            if type(e.widget.tk_focusNext().tk_focusNext()) == tkinter.Text:
+            if type(e.widget) == tkinter.Text:
                 insert = e.widget.index(INSERT)
-                e.widget.tk_focusNext().tk_focusNext().mark_set(INSERT, insert)
+                e.widget.tk_focusPrev().tk_focusPrev().mark_set(INSERT, insert)
             e.widget.tk_focusPrev().tk_focusPrev().focus_set()
         def focus_to_bottom(e):
             e.widget.tk_focusNext().focus_set()
-        def ctr_enter(e):
+        self.newlinecommand = '<Control-Return>'
+        def newline(e):
             if type(e.widget) == tkinter.Text:
                 insert = e.widget.index(INSERT)
                 e.widget.delete(insert+'-1c', insert)
                 for w in self.maintexts:
                     w.insert(insert, '\n')
-        self.master.bind('<KeyPress>', statusbar_element_reload)
-        self.master.bind('<KeyRelease>', statusbar_element_reload)
-        self.master.bind('<Button>', statusbar_element_reload, '+')
-        self.master.bind('<ButtonRelease>', statusbar_element_reload)
+                    w.see(e.widget.index(INSERT))
+                    Text
+                print(e.widget.index(INSERT))
+        def reload(e):
+            statusbar_element_reload()
+            if self.selection_line_highlight: self.highlight()
+        self.master.bind('<KeyPress>', reload)
+        self.master.bind('<KeyRelease>', reload)
+        self.master.bind('<Button>', reload)
+        self.master.bind('<ButtonRelease>', reload)
         # self.master.bind('<KeyPress>', lambda e:print(e), '+')
         # self.master.bind('<KeyRelease>', lambda e:print(e), '+')
         self.master.bind('<KeyRelease>', self.recode_edit_history, '+')
@@ -324,7 +346,7 @@ class Main(Frame):
         self.master.bind('<Control-q>', focus_to_left)
         self.master.bind('<Control-,>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
-        self.master.bind('<Control-Return>', ctr_enter)
+        self.master.bind(self.newlinecommand, newline)
         for entry in self.entrys:
             entry.bind('<Down>', focus_to_bottom)
             entry.bind('<Return>', focus_to_bottom)
@@ -339,10 +361,15 @@ class Main(Frame):
         self.statusbar5.pack(fill=X) if len(self.statusbar5.panes()) else print('statusbar5 was not packed')
 
         self.f2.pack(fill=Y, side=RIGHT, pady=18)
-        self.vbar.pack(fill=Y, expand=YES)
+        # self.vbar.pack(fill=Y, expand=YES)
         self.f1.pack(fill=BOTH, expand=YES)
 
+        # 設定ファイルに異常があり初期化した場合、その旨を通知する
         if self.settingFile_Error_md: self.settingFile_Error_md.show()
+
+        # ファイルを渡されているとき、そのファイルを開く
+        if len(sys.argv) > 1:
+            self.file_open(file=sys.argv[1])
 
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
@@ -354,12 +381,13 @@ class Main(Frame):
         if file:
             self.filepath = file
         else:
-            self.filepath = filedialog.askopenfilename(
+            newfilepath = filedialog.askopenfilename(
                 title = '編集ファイルを選択',
-                initialdir = './',
+                initialdir = self.initialdir,
                 initialfile='file.tcs',
                 filetypes=[('ThreeCrowsプロジェクトファイル', '.tcs'), ('YAMLファイル', '.yaml')],
                 defaultextension='tcs')
+            if newfilepath: self.filepath = newfilepath
 
         print(self.filepath)
 
@@ -396,6 +424,8 @@ class Main(Frame):
                         elif data[i]['text']: mg_exist_hidden_data.show()
                     self.entrys[0].focus_set()
                     self.edit_history.appendleft(data)
+
+                self.initialdir = dirname(self.filepath)
                 self.master.title(f'ThreeCrows - {self.filepath}')
 
                 # 最近使用したファイルのリストを修正し、settings.yamlに反映
@@ -429,14 +459,14 @@ class Main(Frame):
                 with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
                     yaml.dump(self.settings, f, allow_unicode=True)
 
-            except KeyError: # ファイルが読み込めなかった場合
+            except (KeyError, UnicodeDecodeError, yaml.scanner.ScannerError): # ファイルが読み込めなかった場合
                 md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが読み込めませんでした。\nファイルが破損している、またはThreeCrowsプロジェクトファイルではない可能性があります')
                 md.show()
 
     def file_save_as(self, event=None):
         self.filepath = filedialog.asksaveasfilename(
             title='名前をつけて保存',
-            initialdir='./',
+            initialdir=self.initialdir,
             initialfile='noname',
             filetypes=[('ThreeCrowsプロジェクトファイル', '.tcs'), ('YAMLファイル', '.yaml')],
             defaultextension='tcs'
@@ -525,10 +555,14 @@ class Main(Frame):
         if type(obj) == ttk.scrolled.ScrolledText or ttk.Text: return len(obj.get('1.0', 'end-1c').replace('\n', ''))
         elif type(obj) == str: return len(obj)
 
-    def line_count(self, obj:ScrolledText|Text|str=''):
-        if type(obj) == ttk.scrolled.ScrolledText or ttk.Text:
+    def line_count(self, obj:ScrolledText|Text|str='', debug=False):
+        if type(obj) == ScrolledText or Text:
             obj = obj.get('1.0', 'end-1c')
-            return obj.count('\n') + 1 if obj else 0
+        elif type(obj) == str:
+            pass
+        if not debug:
+            obj = obj.rstrip('\r\n')
+        return obj.count('\n') + 1 if obj else 0
 
     def get_current_data(self):
         current_data = {}
@@ -540,7 +574,7 @@ class Main(Frame):
         # 表示されている列のデータで上書きする
         for i in range(self.number_of_columns):
             current_data[i] = {}
-            current_data[i]['text'] = self.maintexts[i].get('1.0',END).removesuffix('\n')
+            current_data[i]['text'] = self.maintexts[i].get('1.0',END).rstrip('\r\n')
             current_data[i]['title'] = self.entrys[i].get()
         # 設定部分を書き込む
         current_data['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
@@ -573,6 +607,7 @@ class Main(Frame):
                 self.entrys[i].insert(END, self.edit_history[1][i]['title'])
         self.undo_history.appendleft(self.edit_history.popleft())
         self.master.focus_get().mark_set(INSERT, insert)
+        self.master.focus_get().see(INSERT)
 
     def repeat(self, event=None):
         if len(self.undo_history) == 0:
@@ -591,6 +626,7 @@ class Main(Frame):
                 self.entrys[i].insert(END, self.undo_history[0][i]['title'])
         self.edit_history.appendleft(self.undo_history.popleft())
         self.master.focus_get().mark_set(INSERT, insert)
+        self.master.focus_get().see(INSERT)
 
     def cut(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
@@ -633,6 +669,14 @@ class Main(Frame):
 
     # テキストエディタ部分の要素の準備
     def make_text_editor(self):
+
+        try:
+            self.f1_2.destroy()
+            self.line_number_box.destroy()
+            self.line_number_box_entry.destroy()
+            self.f1_1.destroy()
+        except AttributeError:
+            pass
         for w in self.columns:
             w.destroy()
         for w in self.entrys:
@@ -640,14 +684,39 @@ class Main(Frame):
         for w in self.maintexts:
             w.destroy()
 
+        ## 行番号
+        if self.display_line_number:
+
+            self.f1_1 = Frame(self.f1, padding=0)
+            self.line_number_box_entry = Entry(self.f1_1, width=3,
+                                                state=DISABLED, takefocus=NO)
+            self.line_number_box = Text(self.f1_1, font=self.font,
+                                        width=4,
+                                        spacing3=self.between_lines,
+                                        takefocus=NO,
+                                        yscrollcommand=self.yscrollcommand)
+            self.line_number_box.tag_config('right', justify=RIGHT)
+            for i in range(9999):
+                i = i + 1
+                self.line_number_box.insert(END, f'{i}\n', 'right')
+            self.line_number_box.config(state=DISABLED)
+
+            self.f1_1.pack(fill=Y, side=LEFT, pady=10)
+            self.line_number_box_entry.pack(fill=X, expand=False, padx=5, pady=0)
+            self.line_number_box.pack(fill=BOTH, expand=YES, padx=5, pady=10)
+
+        ## テキストエディタ本体
+        self.f1_2 = Frame(self.f1, padding=0)
+        self.f1_2.pack(fill=BOTH, expand=YES, pady=10)
+
         self.columns = []
         self.entrys = []
         self.maintexts = []
 
-        for _ in range(self.number_of_columns):
-            self.columns.append(Frame(self.f1, padding=5))
-            self.entrys.append(Entry(self.columns[-1], font=self.font))
-            self.maintexts.append(Text(self.columns[-1], wrap=self.wrap,
+        for i in range(self.number_of_columns):
+            self.columns.append(Frame(self.f1_2, padding=0))
+            self.entrys.append(Entry(self.columns[i], font=self.font))
+            self.maintexts.append(Text(self.columns[i], wrap=self.wrap,
                                     font=self.font, yscrollcommand=self.yscrollcommand,
                                     spacing3=self.between_lines))
 
@@ -657,22 +726,105 @@ class Main(Frame):
             while j: relx, j = relx + self.column_percentage[j-1], j - 1
             self.columns[i].place(relx=relx, rely=0.0, relwidth=self.column_percentage[i], relheight=1.0)
             # Entryを作成
-            self.entrys[i].pack(fill=X, expand=False, padx=3, pady=10)
+            self.entrys[i].pack(fill=X, expand=False, padx=5, pady=0)
             # ScrolledTextを作成
-            self.maintexts[i].pack(fill=BOTH, expand=YES, padx=3, pady=5)
+            self.maintexts[i].pack(fill=BOTH, expand=YES, padx=5, pady=10)
 
         for i in range(self.number_of_columns):
             self.entrys[i].insert(END, self.data[i]['title'])
-            self.maintexts[i].insert(0., self.data[i]['text'])
+            self.maintexts[i].insert(END, self.data[i]['text'])
+
+        self.align_the_number_of_rows()
+
+# 各列の行数をそろえるメソッド
+    def align_the_number_of_rows(self, e=None):
+        data = self.get_current_data()
+        for i in range(self.number_of_columns):
+            newdata = data[i]['text']+'\n'*(9999-self.line_count(self.maintexts[i]))
+            self.maintexts[i].delete(1.0, END)
+            self.maintexts[i].insert(END, newdata)
+        if e:
+            self.maintexts[0].see(INSERT)
+
+# カーソルのある行を強調するメソッド
+    def highlight(self):
+        if type(self.master.focus_get()) == tkinter.Text:
+            insert = self.master.focus_get().index(INSERT)
+            hilight_font = self.font.copy()
+            hilight_font.config(weight='normal', slant='roman', underline=True)
+            for w in self.maintexts:
+                w.mark_set(INSERT, insert)
+                w.tag_delete('insert_line')
+                w.tag_add('insert_line', insert+' linestart', insert+' lineend')
+                w.tag_config('insert_line', underline=False, font=hilight_font)
 
     # 縦スクロールバーが動いたときのメソッド
     def vbar_command(self, e=None, a=None, b=None):
-        for i in range(3): self.maintexts[i].yview(e, a, b)
+        boxes = self.maintexts.copy()
+        try:
+            boxes.append(self.line_number_box)
+        except AttributeError:
+            pass
+        for w in boxes:
+            w.yview(e, a, b)
+        self.yscrollcommand()
 
     # テキストウィジェットを直接動かしたときのメソッド
-    def yscrollcommand(self, a, b):
-        for i in range(3): self.maintexts[i].yview_moveto(a)
-        self.vbar.set(a, b)
+    def yscrollcommand(self, a=None, b=None):
+        # マウスカーソルがあるウィジェットを特定する
+        widget = None
+        pointer = self.master.winfo_pointerxy()
+        boxes = self.maintexts.copy()
+        try:
+            boxes.append(self.line_number_box)
+        except AttributeError:
+            pass
+        for w in boxes:
+            x_range = (w.winfo_rootx(), w.winfo_rootx()+w.winfo_width())
+            y_range = (w.winfo_rooty(), w.winfo_rooty()+w.winfo_height())
+            if x_range[0]<=pointer[0]<=x_range[1] and y_range[0]<=pointer[1]<=y_range[1]:
+                widget = w
+        self.align_the_lines(widget=widget)
+
+    # 位置を合わせる
+    def align_the_lines(self, e=None, widget=None):
+        if widget:
+            height = widget.winfo_height()
+            top = widget.index('@0,0')
+            bottom = widget.index(f'@0,{height}')
+            boxes = self.maintexts.copy()
+            try:
+                boxes.append(self.line_number_box)
+            except AttributeError:
+                pass
+            for w in boxes:
+                w.see(bottom)
+                w.see(top)
+            self.show_cursor_at_bottom_line()
+        # スクロールバーの調整（調整用の改行を無視するようにする）
+        l = [self.line_count(w) for w in self.maintexts]
+        l2 = [self.line_count(w, True) for w in self.maintexts]
+        x = l.index(max(l))
+        try:
+            t = [a/l[x]*l2[x] for a in self.maintexts[x].yview()]
+        except ZeroDivisionError:
+            t = [0.0, 1.0]
+        for i in range(2):
+            if t[i] > 1.0: t[i] = 1.0
+        self.vbar.set(*t)
+
+    # カーソルが最下端の行にあり、最下端の行が隠れているとき、表示する
+    def show_cursor_at_bottom_line(self, e=None):
+        widget = self.master.focus_get()
+        if not widget:
+            widget = self.maintexts[0]
+        if widget.winfo_class() == 'Text':
+            height = widget.winfo_height()
+            bottom = widget.index(f'@0,{height}')
+            for w in self.maintexts:
+                if bottom == widget.index(INSERT+' linestart'):
+                    w.see(float(bottom)+1.0)
+
 
     # 以下、設定ウィンドウに関する設定
 class SettingWindow(Toplevel):
@@ -692,6 +844,8 @@ class SettingWindow(Toplevel):
         self.statusbar_elements_dict = self.settings['statusbar_element_settings']
         self.between_lines = self.settings['between_lines']
         self.wrap = self.settings['wrap']
+        display_line_number = self.settings['display_line_number']
+        selection_line_highlight = self.settings['selection_line_highlight']
 
         self.statusbar_elements_dict_converted = {}
         for i in range(6):
@@ -779,35 +933,53 @@ class SettingWindow(Toplevel):
         Label(lf2, text='ファミリー').pack(anchor=W)
         self.setting_font_family = self.setting_font_family_treeview(lf2)
         self.setting_font_family.pack(fill=X)
+        lf2_1 = Frame(lf2, padding=5)
+        lf2_2 = Frame(lf2, padding=5)
+        lf2_3 = Frame(lf2, padding=5)
         ### フォントサイズ
-        Label(lf2, text='サイズ').pack(anchor=W)
-        self.setting_font_size = Spinbox(lf2, from_=1, to=100, wrap=True)
+        Label(lf2_1, text='サイズ').pack(anchor=W)
+        self.setting_font_size = Spinbox(lf2_1, from_=1, to=100, wrap=True)
         self.setting_font_size.insert(0, self.font_size)
         self.setting_font_size.pack(anchor=W)
+        lf2_1.pack(side=LEFT)
         ### 行間
-        Label(lf2, text='行間').pack(anchor=W)
-        self.setting_between_lines = Spinbox(lf2, from_=0, to=100, wrap=True)
+        Label(lf2_2, text='行間').pack(anchor=W)
+        self.setting_between_lines = Spinbox(lf2_2, from_=0, to=100, wrap=True)
         self.setting_between_lines.insert(0, self.between_lines)
         self.setting_between_lines.pack(anchor=W)
+        lf2_2.pack(side=LEFT)
         ### 折り返し
-        Label(lf2, text='折り返し').pack(anchor=W)
+        Label(lf2_3, text='折り返し').pack(anchor=W)
         self.setting_wrap = StringVar()
-        self.setting_wrap_menu = ttk.OptionMenu(lf2, self.setting_wrap, self.wrap, *['none', 'char', 'word'])
+        self.setting_wrap_menu = OptionMenu(lf2_3, self.setting_wrap, self.wrap, *['none', 'char', 'word'])
         self.setting_wrap_menu.pack(anchor=W)
+        lf2_3.pack(side=LEFT)
 
         ## テーマ
         lf3 = Labelframe(f2, text='テーマ', padding=5)
         lf3.pack(fill=X)
 
         theme_names = []
-        light_theme_names = ['cosmo', 'flatly', 'journal', 'litera', 'lumen', 'minty', 'pulse', 'sandstone', 'united', 'yeti', 'morph', 'simplex', 'cerculean']
-        dark_theme_names = ['solar', 'superhero', 'darkly', 'cyborg', 'vapor']
+        light_theme_names = [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'light']
+        dark_theme_names = [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'dark']
         theme_names.extend(light_theme_names)
         theme_names.append('------')
         theme_names.extend(dark_theme_names)
         self.setting_theme = StringVar()
-        self.setting_theme_menu = ttk.OptionMenu(lf3, self.setting_theme, self.themename, *theme_names)
+        self.setting_theme_menu = OptionMenu(lf3, self.setting_theme, self.themename, *theme_names)
         self.setting_theme_menu.grid(row=0, column=0, pady=5)
+
+        ##その他
+        lf4 = Labelframe(f2, text='その他', padding=5)
+        lf4.pack(fill=X)
+        ### 行番号
+        self.setting_display_line_number = BooleanVar()
+        self.setting_display_line_number.set(display_line_number)
+        Checkbutton(lf4, text='行番号', variable=self.setting_display_line_number, bootstyle="round-toggle", padding=5).pack(anchor=W)
+        ### 選択行の強調
+        self.setting_selection_line_highlight = BooleanVar()
+        self.setting_selection_line_highlight.set(selection_line_highlight)
+        Checkbutton(lf4, text='選択行の強調', variable=self.setting_selection_line_highlight, bootstyle="round-toggle", padding=5).pack(anchor=W)
 
         # タブ - ステータスバー
         f3 = Frame(nt, padding=5)
@@ -840,27 +1012,27 @@ class SettingWindow(Toplevel):
             k = i % 4
             if i < 4:
                 self.setting_statusbar_elements_dict[4]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[4]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[4]['var'][k], self.statusbar_elements_dict_converted[4][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[4]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[4]['var'][k], self.statusbar_elements_dict_converted[4][k], *statusbar_elements))
                 self.setting_statusbar_elements_dict[4]['menu'][k].grid(row=2, column=k, padx=5, pady=5, sticky=W+E)
             elif i < 8:
                 self.setting_statusbar_elements_dict[5]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[5]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[5]['var'][k], self.statusbar_elements_dict_converted[5][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[5]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[5]['var'][k], self.statusbar_elements_dict_converted[5][k], *statusbar_elements))
                 self.setting_statusbar_elements_dict[5]['menu'][k].grid(row=4, column=k, padx=5, pady=5, sticky=W+E)
             elif i < 12:
                 self.setting_statusbar_elements_dict[3]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[3]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[3]['var'][k], self.statusbar_elements_dict_converted[3][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[3]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[3]['var'][k], self.statusbar_elements_dict_converted[3][k], *statusbar_elements))
                 self.setting_statusbar_elements_dict[3]['menu'][k].grid(row=6, column=k, padx=5, pady=5, sticky=W+E)
             elif i < 16:
                 self.setting_statusbar_elements_dict[2]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[2]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[2]['var'][k], self.statusbar_elements_dict_converted[2][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[2]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[2]['var'][k], self.statusbar_elements_dict_converted[2][k], *statusbar_elements))
                 self.setting_statusbar_elements_dict[2]['menu'][k].grid(row=8, column=k, padx=5, pady=5, sticky=W+E)
             elif i < 20:
                 self.setting_statusbar_elements_dict[1]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[1]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[1]['var'][k], self.statusbar_elements_dict_converted[1][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[1]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[1]['var'][k], self.statusbar_elements_dict_converted[1][k], *statusbar_elements))
                 self.setting_statusbar_elements_dict[1]['menu'][k].grid(row=10, column=k, padx=5, pady=5, sticky=W+E)
             elif i < 24:
                 self.setting_statusbar_elements_dict[0]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[0]['menu'].append(ttk.OptionMenu(f3, self.setting_statusbar_elements_dict[0]['var'][k], self.statusbar_elements_dict_converted[0][k], *statusbar_elements))
+                self.setting_statusbar_elements_dict[0]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[0]['var'][k], self.statusbar_elements_dict_converted[0][k], *statusbar_elements))
                 self.setting_statusbar_elements_dict[0]['menu'][k].grid(row=12, column=k, padx=5, pady=5, sticky=W+E)
 
         # キーバインド
@@ -875,7 +1047,7 @@ class SettingWindow(Toplevel):
 
     # 設定編集GUIのOKや適用を押した際の動作
     def save(self, e=None, close=False):
-        print('\nsave')
+        print('save_settings')
         number_of_columns = int(self.setting_number_of_columns.get())
         percentage_of_columns = []
         for i in range(len(self.setting_column_percentage)):
@@ -887,6 +1059,8 @@ class SettingWindow(Toplevel):
         between_lines = int(self.setting_between_lines.get())
         wrap = self.setting_wrap.get()
         themename = self.setting_theme.get()
+        display_line_number = self.setting_display_line_number.get()
+        selection_line_highlight = self.setting_selection_line_highlight.get()
         if themename == '------': themename = self.themename
         statusbar_method = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
         for i in range(24):
@@ -916,10 +1090,12 @@ class SettingWindow(Toplevel):
         self.settings['between_lines'] = between_lines
         self.settings['wrap'] = wrap
         self.settings['themename'] = themename
+        self.settings['display_line_number'] = display_line_number
         self.settings['statusbar_element_settings'] = statusbar_method
+        self.settings['selection_line_highlight'] = selection_line_highlight
         self.settings['version'] = __version__
         with open(r'.\settings.yaml', mode='wt', encoding='utf-8') as f:
-            yaml.dump(self.settings, f)
+            yaml.dump(self.settings, f, allow_unicode=True)
         MessageDialog(  '変更した設定は次回アプリ起動時に読み込まれます\n'+
                         '設定をすぐに反映したい場合、いったんアプリを終了して再起動してください',
                         'ThreeCrows - 設定',
@@ -928,7 +1104,9 @@ class SettingWindow(Toplevel):
 
     # フォントファミリー選択ツリービュー
     def setting_font_family_treeview(self, master):
-        self.tv = Treeview(master, height=10, show=[], columns=[0])
+        f1 = Frame(master)
+        f1.pack(fill=BOTH, expand=YES)
+        self.tv = Treeview(f1, height=10, show=[], columns=[0])
         # 使用可能なフォントを取得
         families = set(font.families())
         # 縦書きフォントを除外
@@ -945,7 +1123,7 @@ class SettingWindow(Toplevel):
         self.tv.selection_set(self.font_family)
         self.tv.see(self.font_family)
         # スクロールバーを設定
-        vbar = Scrollbar(master, command=self.tv.yview, orient=VERTICAL, bootstyle='rounded')
+        vbar = Scrollbar(f1, command=self.tv.yview, orient=VERTICAL, bootstyle='rounded')
         vbar.pack(side=RIGHT, fill=Y)
         self.tv.configure(yscrollcommand=vbar.set)
         return self.tv
@@ -1052,7 +1230,7 @@ class ProjectFileSettingWindow(Toplevel):
         for i in range(int(self.number_of_columns.get())):
             self.sb_p_l.append(Label(self.f1, text=f'列{i+1}: '))
             self.sb_p_l[i].grid(row=i+2, column=1)
-            self.sb_p.append(Spinbox(self.f1, from_=1, to=100, textvariable=self.colmun_percentage[i], state=READONLY, takefocus=False))
+            self.sb_p.append(Spinbox(self.f1, from_=0, to=100, textvariable=self.colmun_percentage[i], state=READONLY, takefocus=False))
             self.sb_p[i].grid(row=i+2, column=2, padx=5, pady=5)
 
     def save(self, e=None, close=False):
