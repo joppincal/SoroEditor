@@ -1,11 +1,11 @@
 from collections import deque
 import datetime
-from os import chdir
-from os.path import dirname
+from os import chdir, path
 import re
 import sys
 import tkinter
 from tkinter import BooleanVar, StringVar, filedialog, font
+import webbrowser
 from ttkbootstrap import Button, Checkbutton, Entry, Frame, Label, Labelframe,\
     Menu, Notebook, OptionMenu, PanedWindow, Scrollbar, Separator, Spinbox, Style,\
     Text, Toplevel, Treeview
@@ -16,7 +16,11 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.2.2'
+__version__ = '0.2.3'
+__projversion__ = '0.2.0'
+with open(path.join(path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+    __thirdpartynotices__ = f.read()
+__icon__ = ''
 
 class Main(Frame):
 
@@ -28,7 +32,7 @@ class Main(Frame):
         self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(True))
 
         # 設定ファイルを読み込み
-        chdir(dirname(sys.argv[0]))
+        chdir(path.dirname(sys.argv[0]))
         self.settingFile_Error_md = None
         self.settings ={'between_lines': 10,
                         'columns': {'number': 3, 'percentage': [10, 60, 30]},
@@ -100,13 +104,13 @@ class Main(Frame):
         for i in range(10):
             self.data0[i] = {'text': '', 'title': ''}
         self.data0['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
-        self.data0['version'] = __version__
+        self.data0['version'] = __projversion__
         self.data = self.data0
         self.edit_history = deque([self.data])
         self.undo_history = deque([])
         self.recently_files: list = self.settings['recently_files']
         try:
-            self.initialdir = dirname(self.recently_files[0])
+            self.initialdir = path.dirname(self.recently_files[0])
         except (IndexError, TypeError):
             self.initialdir = ''
 
@@ -116,10 +120,10 @@ class Main(Frame):
         ## メニュバー - ファイル
         self.menu_file = Menu(menubar, tearoff=False)
 
-        self.menu_file.add_command(label='ファイルを開く', command=self.file_open, accelerator='Ctrl+O')
-        self.menu_file.add_command(label='上書き保存', command=self.file_over_write_save, accelerator='Ctrl+S')
-        self.menu_file.add_command(label='名前をつけて保存', command=self.file_save_as, accelerator='Ctrl+Shift+S')
-        self.menu_file.add_command(label='プロジェクト設定', command=ProjectFileSettingWindow)
+        self.menu_file.add_command(label='ファイルを開く(O)', command=self.file_open, accelerator='Ctrl+O', underline=8)
+        self.menu_file.add_command(label='上書き保存(S)', command=self.file_over_write_save, accelerator='Ctrl+S', underline=6)
+        self.menu_file.add_command(label='名前をつけて保存(A)', command=self.file_save_as, accelerator='Ctrl+Shift+S', underline=9)
+        self.menu_file.add_command(label='プロジェクト設定(F)', command=ProjectFileSettingWindow, underline=9)
 
         ###メニューバー - ファイル - 最近使用したファイル
         self.menu_file_recently = Menu(self.menu_file, tearoff=False)
@@ -133,31 +137,41 @@ class Main(Frame):
         except IndexError as e:
             pass
 
-        self.open_last_file_id = self.menu_file_recently.bind_all('<Control-r>', self.open_last_file)
-        self.menu_file.add_cascade(label='最近使用したファイル', menu=self.menu_file_recently)
+        self.menu_file.add_cascade(label='最近使用したファイル(R)', menu=self.menu_file_recently, underline=11)
 
         self.menu_file.add_separator()
-        self.menu_file.add_command(label='終了', command=lambda:self.file_close(shouldExit=True))
-        menubar.add_cascade(label='ファイル', menu=self.menu_file)
+        self.menu_file.add_command(label='終了(Q)', command=lambda:self.file_close(shouldExit=True), underline=3)
+        menubar.add_cascade(label='ファイル(F)', menu=self.menu_file, underline=5)
 
         ## メニューバー - 編集
         self.menu_edit = Menu(menubar, tearoff=False)
 
-        self.menu_edit.add_command(label='切り取り', command=self.cut, accelerator='Ctrl+X')
-        self.menu_edit.add_command(label='コピー', command=self.copy, accelerator='Ctrl+C')
-        self.menu_edit.add_command(label='貼り付け', command=self.paste, accelerator='Ctrl+V')
-        self.menu_edit.add_command(label='すべて選択', command=self.select_all, accelerator='Ctrl+A')
-        self.menu_edit.add_command(label='1行選択', command=self.select_line)
-        self.menu_edit.add_command(label='取り消し', command=self.undo, accelerator='Ctrl+Z')
-        self.menu_edit.add_command(label='取り消しを戻す', command=self.repeat, accelerator='Ctrl+Shift+Z')
-        menubar.add_cascade(label='編集', menu=self.menu_edit)
+        self.menu_edit.add_command(label='切り取り(T)', command=self.cut, accelerator='Ctrl+X', underline=5)
+        self.menu_edit.add_command(label='コピー(C)', command=self.copy, accelerator='Ctrl+C', underline=4)
+        self.menu_edit.add_command(label='貼り付け(P)', command=self.paste, accelerator='Ctrl+V', underline=5)
+        self.menu_edit.add_command(label='すべて選択(A)', command=self.select_all, accelerator='Ctrl+A', underline=6)
+        self.menu_edit.add_command(label='1行選択(L)', command=self.select_line, underline=5)
+        self.menu_edit.add_command(label='取り消し(U)', command=self.undo, accelerator='Ctrl+Z', underline=5)
+        self.menu_edit.add_command(label='取り消しを戻す(R)', command=self.repeat, accelerator='Ctrl+Shift+Z', underline=8)
+        menubar.add_cascade(label='編集(E)', menu=self.menu_edit, underline=3)
 
         ## メニューバー - 設定
         self.menu_setting = Menu(menubar, tearoff=True)
-        self.menu_setting.add_command(label='設定', command=SettingWindow, accelerator='Ctrl+Shift+P')
-        menubar.add_cascade(label='設定', menu=self.menu_setting)
+        self.menu_setting.add_command(label='設定(S)', command=SettingWindow, accelerator='Ctrl+Shift+P', underline=3)
+        menubar.add_cascade(label='設定(S)', menu=self.menu_setting, underline=3)
 
+        ## メニューバー - ヘルプ
+        self.menu_help = Menu(menubar, tearoff=True)
+        self.menu_help.add_command(label='ヘルプを表示(H)', command=HelpWindow, accelerator='F1', underline=7)
+        self.menu_help.add_command(label='CastellaEditorについて(A)', command=AboutWindow, underline=16)
+        self.menu_help.add_command(label='ライセンス情報(L)', command=ThirdPartyNoticesWindow, underline=8)
+        menubar.add_cascade(label='ヘルプ(H)', menu=self.menu_help, underline=4)
+
+        # メニューバーの設置
         self.master.config(menu = menubar)
+
+        # メニューバー関連のキーバインドを設定
+        self.open_last_file_id = self.menu_file_recently.bind_all('<Control-r>', self.open_last_file)
 
         # 各パーツを製作
         self.f1 = Frame(self.master, padding=5)
@@ -271,9 +285,9 @@ class Main(Frame):
                     self.statusbar_element_dict[num][i] = make_toolbar_element(*e)
                 for e in self.statusbar_element_dict[num].values():
                     i = 1 if num < 4 else 0
-                    eval('self.statusbar'+str(num)+f'.add(e, weight={str(i)})')
+                    self.statusbars[num].add(e, weight=i)
                 if num > 3:
-                    eval('self.statusbar'+str(num)+'.add(Frame())')
+                    self.statusbars[num].add(Frame())
 
         # ステータスバー更新メソッド
         def statusbar_element_reload(event=None):
@@ -289,12 +303,11 @@ class Main(Frame):
         self.statusbar_element_dict = dict()
 
         # ステータスバーを生成
-        self.statusbar0 = PanedWindow(self.master, height=30, orient=HORIZONTAL)
-        self.statusbar1 = PanedWindow(self.master, height=30, orient=HORIZONTAL)
-        self.statusbar2 = PanedWindow(self.master, height=30, orient=HORIZONTAL)
-        self.statusbar3 = PanedWindow(self.master, height=30, orient=HORIZONTAL)
-        self.statusbar4 = PanedWindow(self.master, height=50, orient=HORIZONTAL)
-        self.statusbar5 = PanedWindow(self.master, height=50, orient=HORIZONTAL)
+        self.statusbars = list()
+        for i in range(4):
+            self.statusbars.append(PanedWindow(self.master, height=30, orient=HORIZONTAL))
+        for i in range(2):
+            self.statusbars.append(PanedWindow(self.master, height=50, orient=HORIZONTAL))
         for i in range(6):
             statusbar_element_setting(num=i)
 
@@ -315,16 +328,6 @@ class Main(Frame):
             e.widget.tk_focusPrev().tk_focusPrev().focus_set()
         def focus_to_bottom(e):
             e.widget.tk_focusNext().focus_set()
-        self.newlinecommand = '<Control-Return>'
-        def newline(e):
-            if type(e.widget) == tkinter.Text:
-                insert = e.widget.index(INSERT)
-                e.widget.delete(insert+'-1c', insert)
-                for w in self.maintexts:
-                    w.insert(insert, '\n')
-                    w.see(e.widget.index(INSERT))
-                    Text
-                print(e.widget.index(INSERT))
         def reload(e):
             statusbar_element_reload()
             if self.selection_line_highlight: self.highlight()
@@ -346,19 +349,17 @@ class Main(Frame):
         self.master.bind('<Control-q>', focus_to_left)
         self.master.bind('<Control-,>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
-        self.master.bind(self.newlinecommand, newline)
+        self.master.bind('<Control-Return>', self.newline)
         for entry in self.entrys:
             entry.bind('<Down>', focus_to_bottom)
             entry.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
 
         # 各パーツを設置
-        self.statusbar0.pack(fill=X, side=BOTTOM, padx=5, pady=3) if len(self.statusbar0.panes()) else print('statusbar0 was not packed')
-        self.statusbar1.pack(fill=X, side=BOTTOM, padx=5, pady=3) if len(self.statusbar1.panes()) else print('statusbar1 was not packed')
-        self.statusbar2.pack(fill=X, side=BOTTOM, padx=5, pady=3) if len(self.statusbar2.panes()) else print('statusbar2 was not packed')
-        self.statusbar3.pack(fill=X, side=BOTTOM, padx=5, pady=3) if len(self.statusbar3.panes()) else print('statusbar3 was not packed')
-        self.statusbar4.pack(fill=X) if len(self.statusbar4.panes()) else print('statusbar4 was not packed')
-        self.statusbar5.pack(fill=X) if len(self.statusbar5.panes()) else print('statusbar5 was not packed')
+        for w in self.statusbars[0:4]:
+            w.pack(fill=X, side=BOTTOM, padx=5, pady=3) if len(w.panes()) else print(f'{w} was not packed')
+        for w in self.statusbars[4:6]:
+            w.pack(fill=X) if len(w.panes()) else print(f'{w} was not packed')
 
         self.f2.pack(fill=Y, side=RIGHT, pady=18)
         # self.vbar.pack(fill=Y, expand=YES)
@@ -384,9 +385,9 @@ class Main(Frame):
             newfilepath = filedialog.askopenfilename(
                 title = '編集ファイルを選択',
                 initialdir = self.initialdir,
-                initialfile='file.tcs',
-                filetypes=[('ThreeCrowsプロジェクトファイル', '.tcs'), ('YAMLファイル', '.yaml')],
-                defaultextension='tcs')
+                initialfile='file.cep',
+                filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml'), ('ThreeCrowsプロジェクトファイル', '.tcs')],
+                defaultextension='cep')
             if newfilepath: self.filepath = newfilepath
 
         print(self.filepath)
@@ -419,14 +420,14 @@ class Main(Frame):
                                                             f'text: {data[i]["text"][0:10]}...\n'
                                                             '確認するにはプロジェクトファイルを普通のテキストエディタで開いて直接データを見るか、'
                                                             'ファイル - プロジェクト設定 からこのファイルで表示する列を変更し、'
-                                                            f'列{self.number_of_columns+i-1}が見えるようにしてください', 'ThreeCrows - 隠されたデータ')
+                                                            f'列{self.number_of_columns+i-1}が見えるようにしてください', 'CastellaEditor - 隠されたデータ')
                         if data[i]['title']: mg_exist_hidden_data.show()
                         elif data[i]['text']: mg_exist_hidden_data.show()
                     self.entrys[0].focus_set()
                     self.edit_history.appendleft(data)
 
-                self.initialdir = dirname(self.filepath)
-                self.master.title(f'ThreeCrows - {self.filepath}')
+                self.initialdir = path.dirname(self.filepath)
+                self.master.title(f'CastellaEditor - {self.filepath}')
 
                 # 最近使用したファイルのリストを修正し、settings.yamlに反映
                 self.recently_files.insert(0, self.filepath)
@@ -460,7 +461,7 @@ class Main(Frame):
                     yaml.dump(self.settings, f, allow_unicode=True)
 
             except (KeyError, UnicodeDecodeError, yaml.scanner.ScannerError): # ファイルが読み込めなかった場合
-                md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが読み込めませんでした。\nファイルが破損している、またはThreeCrowsプロジェクトファイルではない可能性があります')
+                md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが読み込めませんでした。\nファイルが破損している、またはCastellaEditorプロジェクトファイルではない可能性があります')
                 md.show()
 
     def file_save_as(self, event=None):
@@ -468,13 +469,13 @@ class Main(Frame):
             title='名前をつけて保存',
             initialdir=self.initialdir,
             initialfile='noname',
-            filetypes=[('ThreeCrowsプロジェクトファイル', '.tcs'), ('YAMLファイル', '.yaml')],
-            defaultextension='tcs'
+            filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml')],
+            defaultextension='cep'
         )
         if self.filepath:
             print(self.filepath)
             self.save_file(self.filepath)
-            self.master.title(f'ThreeCrows - {self.filepath}')
+            self.master.title(f'CastellaEditor - {self.filepath}')
             return True
         else: return False
 
@@ -522,11 +523,11 @@ class Main(Frame):
 
         if shouldExit:
             message = '更新内容が保存されていません。アプリを終了しますか。'
-            title = 'ThreeCrows - 終了確認'
+            title = 'CastellaEditor - 終了確認'
             buttons=['保存して終了:success', '保存せず終了:danger', 'キャンセル']
         else:
             message = '更新内容が保存されていません。ファイルを閉じ、ファイルを変更しますか'
-            title = 'ThreeCrows - 確認'
+            title = 'CastellaEditor - 確認'
             buttons=['保存して変更:success', '保存せず変更:danger', 'キャンセル']
 
         if self.data == current_data:
@@ -580,7 +581,7 @@ class Main(Frame):
         current_data['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
         for _ in range(10-len(current_data['columns']['percentage'])):
             current_data['columns']['percentage'].append(0)
-        current_data['version'] = __version__
+        current_data['version'] = __projversion__
         return current_data
 
     def recode_edit_history(self, event=None):
@@ -666,6 +667,16 @@ class Main(Frame):
             self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
         elif self.master.focus_get().winfo_class() == 'TEntry':
             pass
+
+    def newline(self, e):
+        if type(e.widget) == tkinter.Text:
+            insert = e.widget.index(INSERT+ '-1lines linestart')
+            e.widget.delete(insert+'-1c', insert)
+            for w in self.maintexts:
+                w.insert(insert, '\n')
+                w.see(e.widget.index(INSERT))
+                Text
+            print(e.widget.index(INSERT))
 
     # テキストエディタ部分の要素の準備
     def make_text_editor(self):
@@ -828,7 +839,7 @@ class Main(Frame):
 
     # 以下、設定ウィンドウに関する設定
 class SettingWindow(Toplevel):
-    def __init__(self, title="ThreeCrows - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="CastellaEditor - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
         # 設定ファイルの読み込み
@@ -872,6 +883,9 @@ class SettingWindow(Toplevel):
         nt.add(f1, padding=5, text='    列    ')
 
         ## 列について
+        Label(f1, text='この設定は、新規プロジェクトのデフォルト設定です。'+
+            '現在編集中のプロジェクトの列数や列幅を変更するには、\n'+
+                'ファイル(F) - プロジェクト設定(F)から行ってください。').pack()
         lf1 = Labelframe(f1, text='デフォルト列', padding=5)
         lf1.pack(fill=X)
 
@@ -949,7 +963,7 @@ class SettingWindow(Toplevel):
         self.setting_between_lines.pack(anchor=W)
         lf2_2.pack(side=LEFT)
         ### 折り返し
-        Label(lf2_3, text='折り返し').pack(anchor=W)
+        Label(lf2_3, text='*折り返し').pack(anchor=W)
         self.setting_wrap = StringVar()
         self.setting_wrap_menu = OptionMenu(lf2_3, self.setting_wrap, self.wrap, *['none', 'char', 'word'])
         self.setting_wrap_menu.pack(anchor=W)
@@ -975,7 +989,7 @@ class SettingWindow(Toplevel):
         ### 行番号
         self.setting_display_line_number = BooleanVar()
         self.setting_display_line_number.set(display_line_number)
-        Checkbutton(lf4, text='行番号', variable=self.setting_display_line_number, bootstyle="round-toggle", padding=5).pack(anchor=W)
+        Checkbutton(lf4, text='*行番号', variable=self.setting_display_line_number, bootstyle="round-toggle", padding=5).pack(anchor=W)
         ### 選択行の強調
         self.setting_selection_line_highlight = BooleanVar()
         self.setting_selection_line_highlight.set(selection_line_highlight)
@@ -1094,11 +1108,16 @@ class SettingWindow(Toplevel):
         self.settings['statusbar_element_settings'] = statusbar_method
         self.settings['selection_line_highlight'] = selection_line_highlight
         self.settings['version'] = __version__
+        app.font.config(family=font_family, size=font_size)
+        app.between_lines = between_lines
+        app.windowstyle.theme_use(themename)
+        # app.statusbar
+        app.selection_line_highlight = selection_line_highlight
         with open(r'.\settings.yaml', mode='wt', encoding='utf-8') as f:
             yaml.dump(self.settings, f, allow_unicode=True)
-        MessageDialog(  '変更した設定は次回アプリ起動時に読み込まれます\n'+
+        MessageDialog(  '一部の設定（*アスタリスク付きの項目）の反映にはアプリの再起動が必要です\n'+
                         '設定をすぐに反映したい場合、いったんアプリを終了して再起動してください',
-                        'ThreeCrows - 設定',
+                        'CastellaEditor - 設定',
                         ['OK']).show()
         if close: self.destroy()
 
@@ -1163,13 +1182,13 @@ class SettingWindow(Toplevel):
         return ''
 
 class ProjectFileSettingWindow(Toplevel):
-    def __init__(self, title="ThreeCrows - プロジェクト設定", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="CastellaEditor - プロジェクト設定", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
         if app.get_current_data() != app.data:
             self.withdraw()
             mg = MessageDialog('プロジェクトファイル設定を変更する前にプロジェクトファイルを保存します',
-                        'ThreeCrows - プロジェクトファイル設定',
+                        'CastellaEditor - プロジェクトファイル設定',
                         ['OK:success', 'キャンセル:secondary'],)
             mg.show()
             print(mg.result)
@@ -1249,7 +1268,95 @@ class ProjectFileSettingWindow(Toplevel):
         if close: self.destroy()
 
 
+class ThirdPartyNoticesWindow(Toplevel):
+    def __init__(self, title="CastellaEditor - ライセンス情報", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        text = __thirdpartynotices__
+        familys = font.families(self)
+        if 'Consolas' in familys: family = 'Consolas'
+        elif 'SF Mono' in familys: family = 'SF Mono'
+        elif 'DejaVu Sans Mono' in familys: family = 'DejaVu Sans Mono'
+        else: family = 'Courier'
+        widget = ScrolledText(self, 10)
+        widget.insert(END, text)
+        pattern = re.compile('\n---------------------------------------------------------\n\n(.+)\n(.+)')
+        widget.tag_config('name', font=font.Font(family=family, size=18, weight='bold'), spacing2=10)
+        def open_url(url):
+            def inner(_):
+                webbrowser.open_new(url)
+                print(url)
+            return inner
+        for m in pattern.finditer(text):
+            index = widget.search(m.group(), 0.0)
+            widget.tag_add('name', index+'+3lines', index+'+3lines lineend')
+            widget.tag_config(m.groups()[1], font=font.Font(family=family, size=14, underline=True), spacing2=10)
+            widget.tag_add(m.groups()[1], index+'+4lines', index+'+4lines lineend')
+            command = open_url(m.groups()[1])
+            widget.tag_bind(m.groups()[1], '<Button-1>', command)
+        print(widget.tag_names())
+        widget.winfo_children()[0].config(font=font.Font(family=family, size=12), spacing2=10, state=DISABLED)
+        widget.pack(fill=BOTH, expand=True)
+
+        # ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
+
+
+class HelpWindow(Toplevel):
+    def __init__(self, title="ヘルプ", iconphoto='', size=(600, 500), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        f = Frame(self, padding=5)
+        f.pack(fill=BOTH, expand=True)
+
+        # ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
+
+
+class AboutWindow(Toplevel):
+    def __init__(self, title="CastellaEditorについて", iconphoto='', size=(600, 500), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        frame = Frame(self, padding=5)
+        frame.pack(fill=BOTH, expand=True)
+        main = Text(frame)
+
+        main.tag_config('title', justify=CENTER, spacing2=10, font=font.Font(size=15, weight='bold'))
+        main.tag_config('text', justify=CENTER, spacing2=10, font=font.Font(size=12, weight='normal'))
+        main.tag_config('link', justify=CENTER, spacing2=10, font=font.Font(size=12, weight='normal', underline=True))
+        github = 'https://github.com/joppincal/CastellaEditor'
+        main.tag_config('github')
+        main.tag_bind('github', '<Button-1>', lambda e: webbrowser.open_new(github))
+        homepage = ''
+        main.tag_config('homepage')
+        main.tag_bind('homepage', '<Button-1>', lambda e: webbrowser.open_new(homepage))
+
+        main.insert(END, 'ここにアイコンを表示\n')
+        main.insert(END, 'カステラエディタ\nCastellaEditor\n', 'title')
+        main.insert(END, f'\nバージョン: {__version__}\n', 'text')
+        main.insert(END, f'プロジェクトファイルバージョン: {__projversion__}\n', 'text')
+        main.insert(END, '\nGithub: ', 'text')
+        main.insert(END, github+'\n', ('link', 'github'))
+        main.insert(END, 'Homepage: ', 'text')
+        main.insert(END, homepage+'\n', ('link', 'homepage'))
+
+        main.config(state=DISABLED, takefocus=False)
+        main.pack(fill=BOTH, expand=True)
+
+        # ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
+
+
 if __name__ == '__main__':
-    root = ttk.Window(title='ThreeCrows', minsize=(1200, 800))
+    root = ttk.Window(title='CastellaEditor', minsize=(1200, 800))
     app = Main(master=root)
     app.mainloop()
