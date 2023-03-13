@@ -2,3 +2,9 @@
 *.tcs
 *.python
 *.lnk
+venv
+venv3.10.5
+threecrows.build
+threecrows.dist
+threecrows.onefile-build
+*.exe
