@@ -15,7 +15,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 __projversion__ = '0.2.0'
 with open(path.join(path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -38,6 +38,7 @@ class Main(Frame):
                         'columns': {'number': 3, 'percentage': [10, 60, 30]},
                         'display_line_number': True,
                         'font': {'family': 'nomal', 'size': 12},
+                        'ms_align_the_lines': 300,
                         'recently_files': [],
                         'selection_line_highlight': True,
                         'statusbar_element_settings':
@@ -53,7 +54,7 @@ class Main(Frame):
         try:
             with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
-                if set(data.keys()) & set(self.settings.keys()) != set(data.keys()):
+                if set(data.keys()) & set(self.settings.keys()) != set(self.settings.keys()):
                     raise KeyError
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
         except (KeyError, AttributeError) as e:
@@ -114,6 +115,8 @@ class Main(Frame):
             self.initialdir = path.dirname(self.recently_files[0])
         except (IndexError, TypeError):
             self.initialdir = ''
+        self.text_place = (1.0, 1.0)
+        self.ms_align_the_lines = self.settings['ms_align_the_lines']
 
         # メニューバーの作成
         menubar = Menu()
@@ -141,7 +144,7 @@ class Main(Frame):
         self.menu_file.add_cascade(label='最近使用したファイル(R)', menu=self.menu_file_recently, underline=11)
 
         self.menu_file.add_separator()
-        self.menu_file.add_command(label='終了(Q)', command=lambda:self.file_close(shouldExit=True), underline=3)
+        self.menu_file.add_command(label='終了(Q)', command=lambda:self.file_close(shouldExit=True), accelerator='Alt+F4', underline=3)
         menubar.add_cascade(label='ファイル(F)', menu=self.menu_file, underline=5)
 
         ## メニューバー - 編集
@@ -386,6 +389,8 @@ class Main(Frame):
         # ファイルを渡されているとき、そのファイルを開く
         if len(sys.argv) > 1:
             self.file_open(file=sys.argv[1])
+
+        self.master.after(self.ms_align_the_lines, self.align_the_lines2)
 
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
@@ -789,7 +794,8 @@ class Main(Frame):
             self.columns.append(Frame(self.f1_2, padding=0))
             self.entrys.append(Entry(self.columns[i], font=self.font))
             self.maintexts.append(Text(self.columns[i], wrap=self.wrap,
-                                    font=self.font, yscrollcommand=self.yscrollcommand,
+                                    font=self.font,
+                                    yscrollcommand=self.yscrollcommand,
                                     spacing3=self.between_lines))
 
         for i in range(self.number_of_columns):
@@ -802,21 +808,40 @@ class Main(Frame):
             # Textを作成
             self.maintexts[i].pack(fill=BOTH, expand=YES, padx=5, pady=10)
 
+        ## ダミーテキスト（スクロールバーのための）
+        self.dammy_column = (Frame(self.f1_2, padding=0))
+        self.dammy_entry = (Entry(self.dammy_column, font=self.font))
+        self.dammy_maintext = (Text(self.dammy_column, wrap=self.wrap,
+                                font=self.font,
+                                yscrollcommand=self.yscrollcommand,
+                                spacing3=self.between_lines))
+        self.dammy_column.place(relx=1.0, rely=0.0, relwidth=1.0, relheight=1.0)
+        self.dammy_entry.pack(fill=X, expand=False, padx=5, pady=0)
+        self.dammy_maintext.pack(fill=BOTH, expand=YES, padx=5, pady=10)
+
         for i in range(self.number_of_columns):
             self.entrys[i].insert(END, self.data[i]['title'])
             self.maintexts[i].insert(END, self.data[i]['text'])
 
         self.align_the_number_of_rows()
 
+        self.textboxes = self.maintexts + [self.dammy_maintext]
+        try:
+            self.textboxes.append(self.line_number_box)
+        except AttributeError as e:
+            print(e)
+
     def align_the_number_of_rows(self, e=None):
         '''
         各列の行数をそろえるメソッド
+        とりあえず10000行まで改行を入れる事で代用
         '''
         data = self.get_current_data()
         for i in range(self.number_of_columns):
             newdata = data[i]['text']+'\n'*(9999-self.line_count(self.maintexts[i]))
             self.maintexts[i].delete(1.0, END)
             self.maintexts[i].insert(END, newdata)
+        #self.dammy_maintext.insert(END, '\n'*9999)
         if e:
             self.maintexts[0].see(INSERT)
 
@@ -834,52 +859,67 @@ class Main(Frame):
                 w.tag_add('insert_line', insert+' linestart', insert+' lineend')
                 w.tag_config('insert_line', underline=False, font=hilight_font)
 
+    def vbar_command_old(self, e=None, a=None, b=None):
+        '''
+        縦スクロールバーが動いたときのメソッド
+        '''
+        for w in self.textboxes:
+            w.yview(e, a, b)
+        self.yscrollcommand()
+
     def vbar_command(self, e=None, a=None, b=None):
         '''
         縦スクロールバーが動いたときのメソッド
         '''
-        boxes = self.maintexts.copy()
-        try:
-            boxes.append(self.line_number_box)
-        except AttributeError:
-            pass
-        for w in boxes:
-            w.yview(e, a, b)
-        self.yscrollcommand()
+        self.dammy_maintext.yview(e, a, b)
 
-    def yscrollcommand(self, a=None, b=None):
+    def yscrollcommand_old(self, a=None, b=None):
         '''
         テキストウィジェットを直接動かしたときのメソッド
         '''
         # マウスカーソルがあるウィジェットを特定する
         widget = None
         pointer = self.master.winfo_pointerxy()
-        boxes = self.maintexts.copy()
-        try:
-            boxes.append(self.line_number_box)
-        except AttributeError as e:
-            print(e)
-        for w in boxes:
+        for w in self.textboxes:
             x_range = (w.winfo_rootx(), w.winfo_rootx()+w.winfo_width())
             y_range = (w.winfo_rooty(), w.winfo_rooty()+w.winfo_height())
             if x_range[0]<=pointer[0]<=x_range[1] and y_range[0]<=pointer[1]<=y_range[1]:
                 widget = w
         self.align_the_lines(widget=widget)
 
+    def yscrollcommand(self, a=None, b=None):
+        '''
+        テキストウィジェットを直接動かしたときのメソッド
+        '''
+        return
+        t = [float(f) for f in (a, b)]
+        t2 = self.dammy_maintext.yview()
+        print(t)
+        print(t2)
+        height = self.maintexts[0].winfo_height()
+        l = [(abs(float(w.index('@0,0'))+1.0), abs(float(w.index(f'@0,{height}'))))
+            for w in self.textboxes]
+        #print(l)
+        text_places = [f for f in l if f != self.text_place2]
+        print(f'text_places: {text_places}')
+        if not text_places: text_places.append(self.text_place)
+        try:
+            self.text_place = text_places[0]
+        except ValueError as e:
+            print(e)
+        #print(f'self.text_place: {self.text_place}')
+
+
     def align_the_lines(self, e=None, widget=None):
         '''
         位置を合わせる
         '''
+        return
         if widget:
             height = widget.winfo_height()
             top = widget.index('@0,0')
             bottom = widget.index(f'@0,{height}')
-            boxes = self.maintexts.copy()
-            try:
-                boxes.append(self.line_number_box)
-            except AttributeError as e:
-                print(e)
-            for w in boxes:
+            for w in self.textboxes:
                 w.see(bottom)
                 w.see(top)
             self.show_cursor_at_bottom_line()
@@ -895,6 +935,76 @@ class Main(Frame):
             if t[i] > 1.0: t[i] = 1.0
         self.vbar.set(*t)
 
+    def align_the_lines2(self):
+        '''
+        位置を合わせる
+        '''
+
+        height = self.textboxes[0].winfo_height()
+        l = [(float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
+                        for w in self.textboxes]
+        text_places = []
+        for t in l:
+            if t[0] != self.text_place[0]:
+                text_places.append(t)
+        # print(f'text_places: {text_places}')
+        # print(f'self.text_place: {self.text_place}')
+        # if len(text_places) == len(self.textboxes):
+        #     self.text_place = text_places[0]
+        if not text_places:
+            self.text_place = l[0]
+        # print(f'self.text_place: {self.text_place}')
+        # print(f'text_places: {text_places}')
+
+        if len(text_places) == 1: print('change')
+        if len(text_places) == 1: print(f'text_places[0]: {text_places[0]}')
+        if len(text_places) == 1: self.text_place = text_places[0]
+        # print(f'self.text_place: {self.text_place}')
+
+        # ダミーテキストの行数を調整
+        self.dammy_maintext_line_set()
+
+        if self.text_place[1] > self.line_count(self.dammy_maintext):
+            self.text_place = list(self.text_place)
+            print(float(self.line_count(self.dammy_maintext)))
+            self.text_place[1] = float(self.line_count(self.dammy_maintext))
+            self.text_place = tuple(self.text_place)
+
+        # 場所を設定
+        for w in self.textboxes:
+            w.see(self.text_place[1])
+            w.see(self.text_place[1])
+            w.see(self.text_place[1])
+            w.see(self.text_place[0])
+            w.see(self.text_place[0])
+            w.see(self.text_place[0])
+        #print(f'self.maintexts[0].index("@0,0")  : {self.maintexts[0].index("@0,0")}')
+        #print(f'self.dammy_maintext.index("@0,0"): {self.dammy_maintext.index("@0,0")}')
+        #print(f'self.maintexts[0].yview(): {self.maintexts[0].yview()}')
+
+        # ずれを検知し、修正
+        if not all([True
+                    if f == self.maintexts[0].index('@0,0')
+                    else False
+                    for f
+                    in [w.index('@0,0') for w in self.textboxes]]):
+            print('\nずれた！')
+            print([f.index('@0,0') for f in self.textboxes])
+            for w in self.textboxes:
+                w.see('0.0')
+                w.see(self.text_place[1])
+                w.see(self.text_place[1])
+                w.see(self.text_place[1])
+                w.see(self.text_place[0])
+                w.see(self.text_place[0])
+                w.see(self.text_place[0])
+            self.text_place = (float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
+        self.show_cursor_at_bottom_line()
+        self.master.after(self.ms_align_the_lines, self.align_the_lines2)
+
+        # 縦スクロールバーを設定
+        self.vbar.set(*self.dammy_maintext.yview())
+
     def show_cursor_at_bottom_line(self, e=None):
         '''
         カーソルが最下端の行にあり、最下端の行が隠れているとき、表示する
@@ -905,9 +1015,24 @@ class Main(Frame):
         if widget.winfo_class() == 'Text':
             height = widget.winfo_height()
             bottom = widget.index(f'@0,{height}')
-            for w in self.maintexts:
-                if bottom == widget.index(INSERT+' linestart'):
-                    w.see(float(bottom)+1.0)
+            if bottom == widget.index(INSERT+' linestart'):
+                for w in self.textboxes:
+                    w.see(float(bottom)+0.0)
+
+    def dammy_maintext_line_set(self):
+        '''
+        ダミーテキストの行数を調整するメソッド
+        '''
+        i = max([self.line_count(w) for w in self.maintexts]) + 50
+        j = self.line_count(self.dammy_maintext)
+        x = j - i
+        if x < 0:
+            x = x*-1
+            for _ in range(x):
+                self.dammy_maintext.insert(END, f'd\n')
+        elif x > 0:
+            for _ in range(x):
+                self.dammy_maintext.delete(0.0, float(x))
 
     def change_text_widget_state(self, e=None, mode=0, widget=None):
         '''
