@@ -8,15 +8,14 @@ from tkinter import BooleanVar, StringVar, filedialog, font
 import webbrowser
 from ttkbootstrap import Button, Checkbutton, Entry, Frame, Label, Labelframe,\
     Menu, Notebook, OptionMenu, PanedWindow, Scrollbar, Separator, Spinbox, Style,\
-    Text, Toplevel, Treeview
-import ttkbootstrap as ttk
+    Text, Toplevel, Treeview, Window
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs.dialogs import MessageDialog
 from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.0'
+__version__ = '0.3.2'
 __projversion__ = '0.2.0'
 with open(path.join(path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -34,26 +33,28 @@ class Main(Frame):
         # 設定ファイルを読み込み
         chdir(path.dirname(sys.argv[0]))
         self.settingFile_Error_md = None
+        initialization = False
         self.settings ={'between_lines': 10,
                         'columns': {'number': 3, 'percentage': [10, 60, 30]},
-                        'display_line_number': False,
-                        'font': {'family': 'nomal', 'size': 20},
+                        'display_line_number': True,
+                        'font': {'family': 'nomal', 'size': 12},
+                        'ms_align_the_lines': 300,
                         'recently_files': [],
                         'selection_line_highlight': True,
                         'statusbar_element_settings':
                             {0: ['statusbar_message'],
                             1: ['hotkeys2', 'hotkeys3'],
                             2: ['hotkeys1'],
-                            3: ['letter_count_2', 'line_count_2', 'letter_count_3', 'line_count_3'],
+                            3: ['current_place', 'line_count_1', 'line_count_2', 'line_count_3'],
                             4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_save_as'],
                             5: [None]},
-                        'themename': 'darkly',
+                        'themename': '',
                         'version': __version__,
                         'wrap': NONE}
         try:
             with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
-                if set(data.keys()) & set(self.settings.keys()) != set(data.keys()):
+                if set(data.keys()) & set(self.settings.keys()) != set(self.settings.keys()):
                     raise KeyError
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
         except (KeyError, AttributeError) as e:
@@ -75,6 +76,7 @@ class Main(Frame):
             with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
                 yaml.safe_dump(self.settings, f, allow_unicode=True)
             settingFile_Error_message = '設定ファイルが存在しなかったため作成しました'
+            initialization = True
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         else: self.settings = data
 
@@ -113,6 +115,8 @@ class Main(Frame):
             self.initialdir = path.dirname(self.recently_files[0])
         except (IndexError, TypeError):
             self.initialdir = ''
+        self.text_place = (1.0, 1.0)
+        self.ms_align_the_lines = self.settings['ms_align_the_lines']
 
         # メニューバーの作成
         menubar = Menu()
@@ -140,7 +144,7 @@ class Main(Frame):
         self.menu_file.add_cascade(label='最近使用したファイル(R)', menu=self.menu_file_recently, underline=11)
 
         self.menu_file.add_separator()
-        self.menu_file.add_command(label='終了(Q)', command=lambda:self.file_close(shouldExit=True), underline=3)
+        self.menu_file.add_command(label='終了(Q)', command=lambda:self.file_close(shouldExit=True), accelerator='Alt+F4', underline=3)
         menubar.add_cascade(label='ファイル(F)', menu=self.menu_file, underline=5)
 
         ## メニューバー - 編集
@@ -318,19 +322,29 @@ class Main(Frame):
             print(widget, 'has focus')
         def focus_to_right(e):
             if type(e.widget) == tkinter.Text:
+                next_text_index = self.maintexts.index(e.widget)+1
+                if next_text_index >= len(self.maintexts): next_text_index = 0
+                next_text = self.maintexts[next_text_index]
                 insert = e.widget.index(INSERT)
-                e.widget.tk_focusNext().tk_focusNext().mark_set(INSERT, insert)
-            e.widget.tk_focusNext().tk_focusNext().focus_set()
+                next_text.mark_set(INSERT, insert)
+                next_text.focus_set()
         def focus_to_left(e):
             if type(e.widget) == tkinter.Text:
+                prev_text_index = self.maintexts.index(e.widget)-1
+                prev_text = self.maintexts[prev_text_index]
                 insert = e.widget.index(INSERT)
-                e.widget.tk_focusPrev().tk_focusPrev().mark_set(INSERT, insert)
-            e.widget.tk_focusPrev().tk_focusPrev().focus_set()
+                prev_text.mark_set(INSERT, insert)
+                prev_text.focus_set()
         def focus_to_bottom(e):
-            e.widget.tk_focusNext().focus_set()
+            if e.widget.winfo_class() == 'TEntry':
+                print('O')
+                index = self.entrys.index(e.widget)
+                self.maintexts[index].focus_set()
         def reload(e):
             statusbar_element_reload()
+            self.align_the_lines()
             if self.selection_line_highlight: self.highlight()
+            self.change_text_widget_state()
         self.master.bind('<KeyPress>', reload)
         self.master.bind('<KeyRelease>', reload)
         self.master.bind('<Button>', reload)
@@ -349,10 +363,10 @@ class Main(Frame):
         self.master.bind('<Control-q>', focus_to_left)
         self.master.bind('<Control-,>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
-        self.master.bind('<Control-Return>', self.newline)
-        for entry in self.entrys:
-            entry.bind('<Down>', focus_to_bottom)
-            entry.bind('<Return>', focus_to_bottom)
+        self.master.bind('<Control-Return>', lambda e: self.newline(e, 1))
+        self.master.bind('<Control-Shift-Return>', lambda e: self.newline(e, 0))
+        self.master.bind('<Down>', focus_to_bottom)
+        self.master.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
 
         # 各パーツを設置
@@ -362,15 +376,21 @@ class Main(Frame):
             w.pack(fill=X) if len(w.panes()) else print(f'{w} was not packed')
 
         self.f2.pack(fill=Y, side=RIGHT, pady=18)
-        # self.vbar.pack(fill=Y, expand=YES)
+        self.vbar.pack(fill=Y, expand=YES)
         self.f1.pack(fill=BOTH, expand=YES)
 
         # 設定ファイルに異常があり初期化した場合、その旨を通知する
         if self.settingFile_Error_md: self.settingFile_Error_md.show()
 
+        # 設定ファイルが存在しなかった場合、初回起動と扱う
+        if initialization:
+            self.file_open(file=path.join(path.dirname(__file__), 'hello.txt'))
+
         # ファイルを渡されているとき、そのファイルを開く
         if len(sys.argv) > 1:
             self.file_open(file=sys.argv[1])
+
+        self.master.after(self.ms_align_the_lines, self.align_the_lines2)
 
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
@@ -386,7 +406,7 @@ class Main(Frame):
                 title = '編集ファイルを選択',
                 initialdir = self.initialdir,
                 initialfile='file.cep',
-                filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml'), ('ThreeCrowsプロジェクトファイル', '.tcs')],
+                filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml'), ('その他', '.*'), ('ThreeCrowsプロジェクトファイル', '.tcs')],
                 defaultextension='cep')
             if newfilepath: self.filepath = newfilepath
 
@@ -395,9 +415,13 @@ class Main(Frame):
         if self.filepath:
             try:
                 with open(self.filepath, mode='rt', encoding='utf-8') as f:
+                    newdata: dict = yaml.safe_load(f)
+                    if 'version' in newdata.keys():
+                        self.data = newdata
+                    else:
+                        raise(KeyError)
                     data = self.data0.copy()
-                    self.data = yaml.safe_load(f)
-                    data.update(self.data)
+                    data.update(newdata)
                     if not 'columns' in data.keys():
                         data['columns'] = {}
                     if not 'number' in data['columns'].keys():
@@ -410,7 +434,12 @@ class Main(Frame):
                     for _ in range(10-len(self.column_percentage)):
                         self.column_percentage.append(0)
 
-                    self.make_text_editor()
+                    try:
+                        self.make_text_editor()
+                    except KeyError:
+                        self.data = self.edit_history[0]
+                        self.make_text_editor()
+                        raise KeyError
 
                     self.edit_history.clear()
 
@@ -431,6 +460,8 @@ class Main(Frame):
 
                 # 最近使用したファイルのリストを修正し、settings.yamlに反映
                 self.recently_files.insert(0, self.filepath)
+                # '\'を'/'に置換
+                self.recently_files = [v.replace('\\', '/') for v in self.recently_files]
                 # 重複を削除
                 self.recently_files = list(dict.fromkeys(self.recently_files))
                 # 5つ以内になるよう削除
@@ -469,7 +500,7 @@ class Main(Frame):
             title='名前をつけて保存',
             initialdir=self.initialdir,
             initialfile='noname',
-            filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml')],
+            filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml'), ('その他', '.*')],
             defaultextension='cep'
         )
         if self.filepath:
@@ -553,8 +584,10 @@ class Main(Frame):
 
     # 以下、エディターの編集に関するメソッド
     def letter_count(self, obj:ScrolledText|Text|str=''):
-        if type(obj) == ttk.scrolled.ScrolledText or ttk.Text: return len(obj.get('1.0', 'end-1c').replace('\n', ''))
-        elif type(obj) == str: return len(obj)
+        if type(obj) == ScrolledText or Text:
+            return len(obj.get('1.0', 'end-1c').replace('\n', ''))
+        elif type(obj) == str:
+            return len(obj)
 
     def line_count(self, obj:ScrolledText|Text|str='', debug=False):
         if type(obj) == ScrolledText or Text:
@@ -592,8 +625,12 @@ class Main(Frame):
             self.undo_history.clear()
 
     def undo(self, event=None):
+
         if len(self.edit_history) <= 1:
             return
+
+        self.change_text_widget_state(mode=1)
+
         current_data = self.get_current_data()
         if type(self.master.focus_get()) == tkinter.Text:
             insert = self.master.focus_get().index(INSERT)
@@ -606,13 +643,22 @@ class Main(Frame):
                 print('undo')
                 self.entrys[i].delete('0', END)
                 self.entrys[i].insert(END, self.edit_history[1][i]['title'])
+
+        self.align_the_number_of_rows()
+        self.align_the_lines()
         self.undo_history.appendleft(self.edit_history.popleft())
         self.master.focus_get().mark_set(INSERT, insert)
         self.master.focus_get().see(INSERT)
 
+        self.change_text_widget_state(mode=0)
+
     def repeat(self, event=None):
+
         if len(self.undo_history) == 0:
             return
+
+        self.change_text_widget_state(mode=1)
+
         current_data = self.get_current_data()
         if type(self.master.focus_get()) == tkinter.Text:
             insert = self.master.focus_get().index(INSERT)
@@ -625,9 +671,14 @@ class Main(Frame):
                 print('repeat')
                 self.entrys[i].delete('0', END)
                 self.entrys[i].insert(END, self.undo_history[0][i]['title'])
+
+        self.align_the_number_of_rows()
+        self.align_the_lines()
         self.edit_history.appendleft(self.undo_history.popleft())
         self.master.focus_get().mark_set(INSERT, insert)
         self.master.focus_get().see(INSERT)
+
+        self.change_text_widget_state()
 
     def cut(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
@@ -668,19 +719,34 @@ class Main(Frame):
         elif self.master.focus_get().winfo_class() == 'TEntry':
             pass
 
-    def newline(self, e):
+    def newline(self, e, mode=0):
+        '''
+        行を追加する
+
+        mode: int=[0, 1]
+
+        mode=0: 上に追加
+        mode=1: 下に追加
+        '''
         if type(e.widget) == tkinter.Text:
-            insert = e.widget.index(INSERT+ '-1lines linestart')
-            e.widget.delete(insert+'-1c', insert)
+
+            self.change_text_widget_state(mode=1)
+
+            e.widget.delete(INSERT+'-1c', INSERT)
+            if mode == 0: insert = e.widget.index(INSERT+ ' linestart')
+            elif mode == 1: insert = e.widget.index(INSERT+ '+1line linestart')
             for w in self.maintexts:
                 w.insert(insert, '\n')
                 w.see(e.widget.index(INSERT))
-                Text
-            print(e.widget.index(INSERT))
+            if mode == 0: e.widget.mark_set(INSERT, INSERT+'-1line linestart')
+            elif mode == 1: e.widget.mark_set(INSERT, INSERT+'+1line linestart')
 
-    # テキストエディタ部分の要素の準備
+            self.change_text_widget_state(mode=0)
+
     def make_text_editor(self):
-
+        '''
+        テキストエディタ部分の要素の準備
+        '''
         try:
             self.f1_2.destroy()
             self.line_number_box.destroy()
@@ -699,7 +765,7 @@ class Main(Frame):
         if self.display_line_number:
 
             self.f1_1 = Frame(self.f1, padding=0)
-            self.line_number_box_entry = Entry(self.f1_1, width=3,
+            self.line_number_box_entry = Entry(self.f1_1, font=self.font, width=3,
                                                 state=DISABLED, takefocus=NO)
             self.line_number_box = Text(self.f1_1, font=self.font,
                                         width=4,
@@ -728,7 +794,8 @@ class Main(Frame):
             self.columns.append(Frame(self.f1_2, padding=0))
             self.entrys.append(Entry(self.columns[i], font=self.font))
             self.maintexts.append(Text(self.columns[i], wrap=self.wrap,
-                                    font=self.font, yscrollcommand=self.yscrollcommand,
+                                    font=self.font,
+                                    yscrollcommand=self.yscrollcommand,
                                     spacing3=self.between_lines))
 
         for i in range(self.number_of_columns):
@@ -738,8 +805,19 @@ class Main(Frame):
             self.columns[i].place(relx=relx, rely=0.0, relwidth=self.column_percentage[i], relheight=1.0)
             # Entryを作成
             self.entrys[i].pack(fill=X, expand=False, padx=5, pady=0)
-            # ScrolledTextを作成
+            # Textを作成
             self.maintexts[i].pack(fill=BOTH, expand=YES, padx=5, pady=10)
+
+        ## ダミーテキスト（スクロールバーのための）
+        self.dammy_column = (Frame(self.f1_2, padding=0))
+        self.dammy_entry = (Entry(self.dammy_column, font=self.font))
+        self.dammy_maintext = (Text(self.dammy_column, wrap=self.wrap,
+                                font=self.font,
+                                yscrollcommand=self.yscrollcommand,
+                                spacing3=self.between_lines))
+        self.dammy_column.place(relx=1.0, rely=0.0, relwidth=1.0, relheight=1.0)
+        self.dammy_entry.pack(fill=X, expand=False, padx=5, pady=0)
+        self.dammy_maintext.pack(fill=BOTH, expand=YES, padx=5, pady=10)
 
         for i in range(self.number_of_columns):
             self.entrys[i].insert(END, self.data[i]['title'])
@@ -747,18 +825,30 @@ class Main(Frame):
 
         self.align_the_number_of_rows()
 
-# 各列の行数をそろえるメソッド
+        self.textboxes = self.maintexts + [self.dammy_maintext]
+        try:
+            self.textboxes.append(self.line_number_box)
+        except AttributeError as e:
+            print(e)
+
     def align_the_number_of_rows(self, e=None):
+        '''
+        各列の行数をそろえるメソッド
+        とりあえず10000行まで改行を入れる事で代用
+        '''
         data = self.get_current_data()
         for i in range(self.number_of_columns):
             newdata = data[i]['text']+'\n'*(9999-self.line_count(self.maintexts[i]))
             self.maintexts[i].delete(1.0, END)
             self.maintexts[i].insert(END, newdata)
+        #self.dammy_maintext.insert(END, '\n'*9999)
         if e:
             self.maintexts[0].see(INSERT)
 
-# カーソルのある行を強調するメソッド
     def highlight(self):
+        '''
+        カーソルのある行を強調するメソッド
+        '''
         if type(self.master.focus_get()) == tkinter.Text:
             insert = self.master.focus_get().index(INSERT)
             hilight_font = self.font.copy()
@@ -769,46 +859,67 @@ class Main(Frame):
                 w.tag_add('insert_line', insert+' linestart', insert+' lineend')
                 w.tag_config('insert_line', underline=False, font=hilight_font)
 
-    # 縦スクロールバーが動いたときのメソッド
-    def vbar_command(self, e=None, a=None, b=None):
-        boxes = self.maintexts.copy()
-        try:
-            boxes.append(self.line_number_box)
-        except AttributeError:
-            pass
-        for w in boxes:
+    def vbar_command_old(self, e=None, a=None, b=None):
+        '''
+        縦スクロールバーが動いたときのメソッド
+        '''
+        for w in self.textboxes:
             w.yview(e, a, b)
         self.yscrollcommand()
 
-    # テキストウィジェットを直接動かしたときのメソッド
-    def yscrollcommand(self, a=None, b=None):
+    def vbar_command(self, e=None, a=None, b=None):
+        '''
+        縦スクロールバーが動いたときのメソッド
+        '''
+        self.dammy_maintext.yview(e, a, b)
+
+    def yscrollcommand_old(self, a=None, b=None):
+        '''
+        テキストウィジェットを直接動かしたときのメソッド
+        '''
         # マウスカーソルがあるウィジェットを特定する
         widget = None
         pointer = self.master.winfo_pointerxy()
-        boxes = self.maintexts.copy()
-        try:
-            boxes.append(self.line_number_box)
-        except AttributeError:
-            pass
-        for w in boxes:
+        for w in self.textboxes:
             x_range = (w.winfo_rootx(), w.winfo_rootx()+w.winfo_width())
             y_range = (w.winfo_rooty(), w.winfo_rooty()+w.winfo_height())
             if x_range[0]<=pointer[0]<=x_range[1] and y_range[0]<=pointer[1]<=y_range[1]:
                 widget = w
         self.align_the_lines(widget=widget)
 
-    # 位置を合わせる
+    def yscrollcommand(self, a=None, b=None):
+        '''
+        テキストウィジェットを直接動かしたときのメソッド
+        '''
+        return
+        t = [float(f) for f in (a, b)]
+        t2 = self.dammy_maintext.yview()
+        print(t)
+        print(t2)
+        height = self.maintexts[0].winfo_height()
+        l = [(abs(float(w.index('@0,0'))+1.0), abs(float(w.index(f'@0,{height}'))))
+            for w in self.textboxes]
+        #print(l)
+        text_places = [f for f in l if f != self.text_place2]
+        print(f'text_places: {text_places}')
+        if not text_places: text_places.append(self.text_place)
+        try:
+            self.text_place = text_places[0]
+        except ValueError as e:
+            print(e)
+        #print(f'self.text_place: {self.text_place}')
+
+
     def align_the_lines(self, e=None, widget=None):
+        '''
+        位置を合わせる
+        '''
+        return
         if widget:
             height = widget.winfo_height()
             top = widget.index('@0,0')
             bottom = widget.index(f'@0,{height}')
-            boxes = self.maintexts.copy()
-            try:
-                boxes.append(self.line_number_box)
-            except AttributeError:
-                pass
-            for w in boxes:
+            for w in self.textboxes:
                 w.see(bottom)
                 w.see(top)
             self.show_cursor_at_bottom_line()
@@ -824,21 +935,131 @@ class Main(Frame):
             if t[i] > 1.0: t[i] = 1.0
         self.vbar.set(*t)
 
-    # カーソルが最下端の行にあり、最下端の行が隠れているとき、表示する
+    def align_the_lines2(self):
+        '''
+        位置を合わせる
+        '''
+
+        height = self.textboxes[0].winfo_height()
+        l = [(float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
+                        for w in self.textboxes]
+        text_places = []
+        for t in l:
+            if t[0] != self.text_place[0]:
+                text_places.append(t)
+        # print(f'text_places: {text_places}')
+        # print(f'self.text_place: {self.text_place}')
+        # if len(text_places) == len(self.textboxes):
+        #     self.text_place = text_places[0]
+        if not text_places:
+            self.text_place = l[0]
+        # print(f'self.text_place: {self.text_place}')
+        # print(f'text_places: {text_places}')
+
+        if len(text_places) == 1: print('change')
+        if len(text_places) == 1: print(f'text_places[0]: {text_places[0]}')
+        if len(text_places) == 1: self.text_place = text_places[0]
+        # print(f'self.text_place: {self.text_place}')
+
+        # ダミーテキストの行数を調整
+        self.dammy_maintext_line_set()
+
+        if self.text_place[1] > self.line_count(self.dammy_maintext):
+            self.text_place = list(self.text_place)
+            print(float(self.line_count(self.dammy_maintext)))
+            self.text_place[1] = float(self.line_count(self.dammy_maintext))
+            self.text_place = tuple(self.text_place)
+
+        # 場所を設定
+        for w in self.textboxes:
+            w.see(self.text_place[1])
+            w.see(self.text_place[1])
+            w.see(self.text_place[1])
+            w.see(self.text_place[0])
+            w.see(self.text_place[0])
+            w.see(self.text_place[0])
+        #print(f'self.maintexts[0].index("@0,0")  : {self.maintexts[0].index("@0,0")}')
+        #print(f'self.dammy_maintext.index("@0,0"): {self.dammy_maintext.index("@0,0")}')
+        #print(f'self.maintexts[0].yview(): {self.maintexts[0].yview()}')
+
+        # ずれを検知し、修正
+        if not all([True
+                    if f == self.maintexts[0].index('@0,0')
+                    else False
+                    for f
+                    in [w.index('@0,0') for w in self.textboxes]]):
+            print('\nずれた！')
+            print([f.index('@0,0') for f in self.textboxes])
+            for w in self.textboxes:
+                w.see('0.0')
+                w.see(self.text_place[1])
+                w.see(self.text_place[1])
+                w.see(self.text_place[1])
+                w.see(self.text_place[0])
+                w.see(self.text_place[0])
+                w.see(self.text_place[0])
+            self.text_place = (float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
+        self.show_cursor_at_bottom_line()
+        self.master.after(self.ms_align_the_lines, self.align_the_lines2)
+
+        # 縦スクロールバーを設定
+        self.vbar.set(*self.dammy_maintext.yview())
+
     def show_cursor_at_bottom_line(self, e=None):
+        '''
+        カーソルが最下端の行にあり、最下端の行が隠れているとき、表示する
+        '''
         widget = self.master.focus_get()
         if not widget:
             widget = self.maintexts[0]
         if widget.winfo_class() == 'Text':
             height = widget.winfo_height()
             bottom = widget.index(f'@0,{height}')
+            if bottom == widget.index(INSERT+' linestart'):
+                for w in self.textboxes:
+                    w.see(float(bottom)+0.0)
+
+    def dammy_maintext_line_set(self):
+        '''
+        ダミーテキストの行数を調整するメソッド
+        '''
+        i = max([self.line_count(w) for w in self.maintexts]) + 50
+        j = self.line_count(self.dammy_maintext)
+        x = j - i
+        if x < 0:
+            x = x*-1
+            for _ in range(x):
+                self.dammy_maintext.insert(END, f'd\n')
+        elif x > 0:
+            for _ in range(x):
+                self.dammy_maintext.delete(0.0, float(x))
+
+    def change_text_widget_state(self, e=None, mode=0, widget=None):
+        '''
+        mode: int=[0, 1, 2]
+        mode=0: 編集中でないテキストを無効にする
+        mode=1: すべてのテキストを有効にする
+        mode=2: すべてのテキストを無効にする
+        '''
+        if mode == 0:
+            if not widget: widget = self.master.focus_get()
+            if not widget: return
             for w in self.maintexts:
-                if bottom == widget.index(INSERT+' linestart'):
-                    w.see(float(bottom)+1.0)
+                w.config(state=DISABLED)
+            if widget.winfo_class() == 'Text':
+                widget.config(state=NORMAL)
+        elif mode == 1:
+            for w in self.maintexts:
+                w.config(state=NORMAL)
+        elif mode == 2:
+            for w in self.maintexts:
+                w.config(state=DISABLED)
 
 
-    # 以下、設定ウィンドウに関する設定
 class SettingWindow(Toplevel):
+    '''
+    設定ウィンドウに関する設定
+    '''
     def __init__(self, title="CastellaEditor - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
@@ -1357,6 +1578,6 @@ class AboutWindow(Toplevel):
 
 
 if __name__ == '__main__':
-    root = ttk.Window(title='CastellaEditor', minsize=(1200, 800))
+    root = Window(title='CastellaEditor', minsize=(1200, 800))
     app = Main(master=root)
     app.mainloop()

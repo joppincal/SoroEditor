@@ -1,0 +1,55 @@
+0:
+  text: "概要\n\n\n\n\n設定可能項目\n設定(S)\tから\n\n\n\n\n\n\n\n\n\n\n\nホットキー\n\n\n\n\n\n\n\n\
+    \n\n\n\nプロジェクトファイル\n\n\n設定ファイル\n\n\n\n\n連絡先"
+  title: hello.txt
+1:
+  text: "CastellaEditor（カステラエディタ）は「並列テキストエディタ」です\n複数列が並び、それぞれテキストエディタとして編集できます\nスクロールを同期できます\n\
+    \n\n・列数・列幅\n・フォント（ファミリー・サイズ）\n・表示テーマ\n・画面端の折り返し（なし\t文字で折り返し\t単語で折り返し（英語向け））\n\
+    ・ステータスバー（ウィンドウ下部の、様々な情報が記述されている場所）\n・ツールバー（ウィンドウ上部のボタンが配置された場所）\n・編集中の行の強調表示（デフォルトでは下線）\n\
+    ・行番号\n・起動時のウィンドウサイズ（全画面\t1600x1000\t1200x800\tから選択）（未実装）\n\n*列数・列幅に関しては、プロジェクトファイルごとに設定できます\n\
+    ファイル(F)→プロジェクト設定(F)\tから\n\nCtrl+O: ファイルを開く\nCtrl+R: 前回使用したファイルを開く\nCtrl+S: 上書き保存\n\
+    Ctrl+Shift+S: 名前をつけて保存\nCtrl+Z: 取り消し\nCtrl+Shift+Z: 取り消しを戻す\nCtrl+Enter: 1行追加（下）\n\
+    Ctrl+Shift+Enter: 1行追加（上）\nCtrl+L: 1行選択\nCtrl+Q, Ctrl+<: 左の列に移動\nCtrl+W, Ctrl+>:\
+    \ 右の列に移動\n\nプロジェクトファイルはYAML形式のファイルの拡張子を変更したものです\n一般のテキストエディタでも閲覧・編集が可能です\n\n設定ファイルはYAML形式です（setting.yaml）\n\
+    一般のテキストエディタでも閲覧・編集が可能です\n実行ファイル（castella.exe または castella.py）と\n同じフォルダに置いてください\n\
+    \n不具合報告・要望などは、Joppincal@mailo.comへ\nもしくはGithubのissueにて"
+  title: CastellaEditor初回起動メッセージ
+2:
+  text: "同様の内容は、\nヘルプ(H)→ヘルプを表示(H)\tF1\nもしくは\nhttps://github.com/joppincal/CastellaEditor\n\
+    で確認できます\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n*.cep"
+  title: ''
+3:
+  text: ''
+  title: ''
+4:
+  text: ''
+  title: ''
+5:
+  text: ''
+  title: ''
+6:
+  text: ''
+  title: ''
+7:
+  text: ''
+  title: ''
+8:
+  text: ''
+  title: ''
+9:
+  text: ''
+  title: ''
+columns:
+  number: 3
+  percentage:
+  - 20
+  - 50
+  - 30
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+version: 0.2.0
