@@ -1,5 +1,6 @@
 from collections import deque
 import datetime
+import difflib
 from os import chdir, path
 import re
 import sys
@@ -15,7 +16,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 __projversion__ = '0.2.0'
 with open(path.join(path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -38,7 +39,7 @@ class Main(Frame):
                         'columns': {'number': 3, 'percentage': [10, 60, 30]},
                         'display_line_number': True,
                         'font': {'family': 'nomal', 'size': 12},
-                        'ms_align_the_lines': 300,
+                        'ms_align_the_lines': 200,
                         'recently_files': [],
                         'selection_line_highlight': True,
                         'statusbar_element_settings':
@@ -342,7 +343,6 @@ class Main(Frame):
                 self.maintexts[index].focus_set()
         def reload(e):
             statusbar_element_reload()
-            self.align_the_lines()
             if self.selection_line_highlight: self.highlight()
             self.change_text_widget_state()
         self.master.bind('<KeyPress>', reload)
@@ -368,6 +368,7 @@ class Main(Frame):
         self.master.bind('<Down>', focus_to_bottom)
         self.master.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
+        self.master.bind('<Control-Y>', self.print_history)
 
         # 各パーツを設置
         for w in self.statusbars[0:4]:
@@ -390,7 +391,7 @@ class Main(Frame):
         if len(sys.argv) > 1:
             self.file_open(file=sys.argv[1])
 
-        self.master.after(self.ms_align_the_lines, self.align_the_lines2)
+        self.master.after(self.ms_align_the_lines, self.align_the_lines)
 
 
     # 以下、ファイルを開始、保存、終了に関するメソッド
@@ -624,32 +625,40 @@ class Main(Frame):
             self.edit_history.appendleft(current_data)
             self.undo_history.clear()
 
-    def undo(self, event=None):
+    def undo(self, even=None):
 
         if len(self.edit_history) <= 1:
             return
 
+        data_new = self.edit_history[0]
+        data_old = self.edit_history[1]
+
         self.change_text_widget_state(mode=1)
 
-        current_data = self.get_current_data()
-        if type(self.master.focus_get()) == tkinter.Text:
-            insert = self.master.focus_get().index(INSERT)
-        for i in range(self.number_of_columns):
-            if current_data[i]['text'] != self.edit_history[1][i]['text']:
-                print('undo')
-                self.maintexts[i].delete('1.0', END)
-                self.maintexts[i].insert(END, self.edit_history[1][i]['text'])
-            if current_data[i]['title'] != self.edit_history[1][i]['title']:
-                print('undo')
-                self.entrys[i].delete('0', END)
-                self.entrys[i].insert(END, self.edit_history[1][i]['title'])
+        for i in range(10):
+            if data_new[i] != data_old[i]:
+                if data_new[i]['title'] != data_old[i]['title']:
+                    print(f'undo_title_{i}')
+                    self.entrys[i].delete(0, END)
+                    self.entrys[i].insert(END, data_old[i]['title'])
+                elif data_new[i]['text'] != data_old[i]['text']:
+                    print(f'undo_text_{i}')
+                    diff = difflib.SequenceMatcher(None, data_new[i]['text'].splitlines(True), data_old[i]['text'].splitlines(True))
+                    for t in diff.get_opcodes():
+                        if t[0] in ('replace', 'delete', 'insert'):
+                            if t[0] == 'replace':
+                                self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                                for s in data_old[i]['text'].splitlines(True)[t[3]:t[4]]:
+                                    self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                            elif t[0] == 'delete':
+                                self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                            elif t[0] == 'insert':
+                                for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
+                                    self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                        elif t[0] == 'equal':
+                            pass
 
-        self.align_the_number_of_rows()
-        self.align_the_lines()
         self.undo_history.appendleft(self.edit_history.popleft())
-        self.master.focus_get().mark_set(INSERT, insert)
-        self.master.focus_get().see(INSERT)
-
         self.change_text_widget_state(mode=0)
 
     def repeat(self, event=None):
@@ -657,28 +666,38 @@ class Main(Frame):
         if len(self.undo_history) == 0:
             return
 
+        data_new = self.edit_history[0]
+        data_old = self.undo_history[0]
+
         self.change_text_widget_state(mode=1)
 
-        current_data = self.get_current_data()
-        if type(self.master.focus_get()) == tkinter.Text:
-            insert = self.master.focus_get().index(INSERT)
-        for i in range(self.number_of_columns):
-            if current_data[i]['text'] != self.undo_history[0][i]['text']:
-                print('repeat')
-                self.maintexts[i].delete('1.0', END)
-                self.maintexts[i].insert(END, self.undo_history[0][i]['text'])
-            if current_data[i]['title'] != self.undo_history[0][i]['title']:
-                print('repeat')
-                self.entrys[i].delete('0', END)
-                self.entrys[i].insert(END, self.undo_history[0][i]['title'])
+        for i in range(10):
+            if data_new[i] != data_old[i]:
+                if data_new[i]['title'] != data_old[i]['title']:
+                    print(f'repeat_title_{i}')
+                    self.entrys[i].delete(0, END)
+                    self.entrys[i].insert(END, data_old[i]['title'])
+                elif data_new[i]['text'] != data_old[i]['text']:
+                    print(f'repeat_text_{i}')
+                    diff = difflib.SequenceMatcher(None, data_new[i]['text'].splitlines(True), data_old[i]['text'].splitlines(True))
+                    for t in diff.get_opcodes():
+                        if t[0] == 'replace':
+                            self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                            for s in data_old[i]['text'].splitlines(True)[t[3]:t[4]]:
+                                self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                        elif t[0] == 'delete':
+                            self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                        elif t[0] == 'insert':
+                            for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
+                                self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                        elif t[0] == 'equal':
+                            pass
 
-        self.align_the_number_of_rows()
-        self.align_the_lines()
         self.edit_history.appendleft(self.undo_history.popleft())
-        self.master.focus_get().mark_set(INSERT, insert)
-        self.master.focus_get().see(INSERT)
+        self.change_text_widget_state(mode=0)
 
-        self.change_text_widget_state()
+    def print_history(self, e=None):
+        print(self.edit_history)
 
     def cut(self, e=None):
         if self.master.focus_get().winfo_class() == 'Text':
@@ -770,8 +789,7 @@ class Main(Frame):
             self.line_number_box = Text(self.f1_1, font=self.font,
                                         width=4,
                                         spacing3=self.between_lines,
-                                        takefocus=NO,
-                                        yscrollcommand=self.yscrollcommand)
+                                        takefocus=NO)
             self.line_number_box.tag_config('right', justify=RIGHT)
             for i in range(9999):
                 i = i + 1
@@ -795,7 +813,6 @@ class Main(Frame):
             self.entrys.append(Entry(self.columns[i], font=self.font))
             self.maintexts.append(Text(self.columns[i], wrap=self.wrap,
                                     font=self.font,
-                                    yscrollcommand=self.yscrollcommand,
                                     spacing3=self.between_lines))
 
         for i in range(self.number_of_columns):
@@ -813,7 +830,6 @@ class Main(Frame):
         self.dammy_entry = (Entry(self.dammy_column, font=self.font))
         self.dammy_maintext = (Text(self.dammy_column, wrap=self.wrap,
                                 font=self.font,
-                                yscrollcommand=self.yscrollcommand,
                                 spacing3=self.between_lines))
         self.dammy_column.place(relx=1.0, rely=0.0, relwidth=1.0, relheight=1.0)
         self.dammy_entry.pack(fill=X, expand=False, padx=5, pady=0)
@@ -841,7 +857,6 @@ class Main(Frame):
             newdata = data[i]['text']+'\n'*(9999-self.line_count(self.maintexts[i]))
             self.maintexts[i].delete(1.0, END)
             self.maintexts[i].insert(END, newdata)
-        #self.dammy_maintext.insert(END, '\n'*9999)
         if e:
             self.maintexts[0].see(INSERT)
 
@@ -859,107 +874,34 @@ class Main(Frame):
                 w.tag_add('insert_line', insert+' linestart', insert+' lineend')
                 w.tag_config('insert_line', underline=False, font=hilight_font)
 
-    def vbar_command_old(self, e=None, a=None, b=None):
-        '''
-        縦スクロールバーが動いたときのメソッド
-        '''
-        for w in self.textboxes:
-            w.yview(e, a, b)
-        self.yscrollcommand()
-
     def vbar_command(self, e=None, a=None, b=None):
         '''
         縦スクロールバーが動いたときのメソッド
         '''
         self.dammy_maintext.yview(e, a, b)
 
-    def yscrollcommand_old(self, a=None, b=None):
-        '''
-        テキストウィジェットを直接動かしたときのメソッド
-        '''
-        # マウスカーソルがあるウィジェットを特定する
-        widget = None
-        pointer = self.master.winfo_pointerxy()
-        for w in self.textboxes:
-            x_range = (w.winfo_rootx(), w.winfo_rootx()+w.winfo_width())
-            y_range = (w.winfo_rooty(), w.winfo_rooty()+w.winfo_height())
-            if x_range[0]<=pointer[0]<=x_range[1] and y_range[0]<=pointer[1]<=y_range[1]:
-                widget = w
-        self.align_the_lines(widget=widget)
-
-    def yscrollcommand(self, a=None, b=None):
-        '''
-        テキストウィジェットを直接動かしたときのメソッド
-        '''
-        return
-        t = [float(f) for f in (a, b)]
-        t2 = self.dammy_maintext.yview()
-        print(t)
-        print(t2)
-        height = self.maintexts[0].winfo_height()
-        l = [(abs(float(w.index('@0,0'))+1.0), abs(float(w.index(f'@0,{height}'))))
-            for w in self.textboxes]
-        #print(l)
-        text_places = [f for f in l if f != self.text_place2]
-        print(f'text_places: {text_places}')
-        if not text_places: text_places.append(self.text_place)
-        try:
-            self.text_place = text_places[0]
-        except ValueError as e:
-            print(e)
-        #print(f'self.text_place: {self.text_place}')
-
-
-    def align_the_lines(self, e=None, widget=None):
+    def align_the_lines(self, top:float=None, bottom:float=None, repeat=True):
         '''
         位置を合わせる
         '''
-        return
-        if widget:
-            height = widget.winfo_height()
-            top = widget.index('@0,0')
-            bottom = widget.index(f'@0,{height}')
-            for w in self.textboxes:
-                w.see(bottom)
-                w.see(top)
-            self.show_cursor_at_bottom_line()
-        # スクロールバーの調整（調整用の改行を無視するようにする）
-        l = [self.line_count(w) for w in self.maintexts]
-        l2 = [self.line_count(w, True) for w in self.maintexts]
-        x = l.index(max(l))
-        try:
-            t = [a/l[x]*l2[x] for a in self.maintexts[x].yview()]
-        except ZeroDivisionError:
-            t = [0.0, 1.0]
-        for i in range(2):
-            if t[i] > 1.0: t[i] = 1.0
-        self.vbar.set(*t)
-
-    def align_the_lines2(self):
-        '''
-        位置を合わせる
-        '''
-
         height = self.textboxes[0].winfo_height()
-        l = [(float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
-                        for w in self.textboxes]
-        text_places = []
-        for t in l:
-            if t[0] != self.text_place[0]:
-                text_places.append(t)
-        # print(f'text_places: {text_places}')
-        # print(f'self.text_place: {self.text_place}')
-        # if len(text_places) == len(self.textboxes):
-        #     self.text_place = text_places[0]
-        if not text_places:
-            self.text_place = l[0]
-        # print(f'self.text_place: {self.text_place}')
-        # print(f'text_places: {text_places}')
 
-        if len(text_places) == 1: print('change')
-        if len(text_places) == 1: print(f'text_places[0]: {text_places[0]}')
-        if len(text_places) == 1: self.text_place = text_places[0]
-        # print(f'self.text_place: {self.text_place}')
+        # 各行の表示位置を確認し、変更を検知する
+        if top and bottom:
+            self.text_place = (top, bottom)
+        else:
+            l = [(float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
+                            for w in self.textboxes]
+            text_places = []
+            for t in l:
+                if t[0] != self.text_place[0]:
+                    text_places.append(t)
+            if not text_places:
+                self.text_place = l[0]
+
+            if len(text_places) == 1: print('change')
+            if len(text_places) == 1: print(f'text_places[0]: {text_places[0]}')
+            if len(text_places) == 1: self.text_place = text_places[0]
 
         # ダミーテキストの行数を調整
         self.dammy_maintext_line_set()
@@ -978,9 +920,6 @@ class Main(Frame):
             w.see(self.text_place[0])
             w.see(self.text_place[0])
             w.see(self.text_place[0])
-        #print(f'self.maintexts[0].index("@0,0")  : {self.maintexts[0].index("@0,0")}')
-        #print(f'self.dammy_maintext.index("@0,0"): {self.dammy_maintext.index("@0,0")}')
-        #print(f'self.maintexts[0].yview(): {self.maintexts[0].yview()}')
 
         # ずれを検知し、修正
         if not all([True
@@ -989,7 +928,7 @@ class Main(Frame):
                     for f
                     in [w.index('@0,0') for w in self.textboxes]]):
             print('\nずれた！')
-            print([f.index('@0,0') for f in self.textboxes])
+            print([f.index('@0,0') for f in self.textboxes], self.text_place)
             for w in self.textboxes:
                 w.see('0.0')
                 w.see(self.text_place[1])
@@ -1000,7 +939,8 @@ class Main(Frame):
                 w.see(self.text_place[0])
             self.text_place = (float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
         self.show_cursor_at_bottom_line()
-        self.master.after(self.ms_align_the_lines, self.align_the_lines2)
+        if repeat:
+            self.master.after(self.ms_align_the_lines, self.align_the_lines)
 
         # 縦スクロールバーを設定
         self.vbar.set(*self.dammy_maintext.yview())
