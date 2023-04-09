@@ -1,10 +1,14 @@
 *.yaml
 *.tcs
+*.cep
+*.sep
+*.$ep
 *.python
 *.lnk
+*.exe
+log
 venv
 venv3.10.5
 castella.build
 castella.dist
 castella.onefile-build
-*.exe

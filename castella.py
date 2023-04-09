@@ -1,26 +1,48 @@
+'''
+SoroEditor - Joppincal
+This software is distributed under the MIT License. See LICENSE for details.
+See ThirdPartyNotices.txt for third party libraries.
+'''
 from collections import deque
 import datetime
 import difflib
-from os import chdir, path
+import logging
+import logging.handlers
+import os
+from random import choice
 import re
 import sys
 import tkinter
-from tkinter import BooleanVar, StringVar, filedialog, font
+from tkinter import BooleanVar, IntVar, StringVar, filedialog, font
 import webbrowser
 from ttkbootstrap import Button, Checkbutton, Entry, Frame, Label, Labelframe,\
-    Menu, Notebook, OptionMenu, PanedWindow, Scrollbar, Separator, Spinbox, Style,\
-    Text, Toplevel, Treeview, Window
+    Menu, Notebook, OptionMenu, PanedWindow, Radiobutton, Scrollbar, Separator, Spinbox, \
+    Style, Text, Toplevel, Treeview, Window
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs.dialogs import MessageDialog
 from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 __projversion__ = '0.2.0'
-with open(path.join(path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
 __icon__ = ''
+
+def log_setting():
+    global log
+    if not os.path.exists('./log'):
+        os.mkdir('./log')
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.DEBUG)
+    formater = logging.Formatter('{asctime} {name:<8s} {levelname:<8s} {message}', style='{')
+    handler = logging.handlers.RotatingFileHandler(
+        filename='./log/soroeditor.log',
+        encoding='utf-8',
+        maxBytes=102400)
+    handler.setFormatter(formater)
+    log.addHandler(handler)
 
 class Main(Frame):
 
@@ -31,15 +53,24 @@ class Main(Frame):
 
         self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(True))
 
+        sys.argv[0] = self.convert_drive_to_uppercase(sys.argv[0])
+        global __file__
+        __file__ = self.convert_drive_to_uppercase(__file__)
+
         # 設定ファイルを読み込み
-        chdir(path.dirname(sys.argv[0]))
+        os.chdir(os.path.dirname(sys.argv[0]))
         self.settingFile_Error_md = None
         initialization = False
-        self.settings ={'between_lines': 10,
+        self.settings ={'autosave': False,
+                        'autosave_frequency': 60000,
+                        'backup': True,
+                        'backup_frequency': 300000,
+                        'between_lines': 10,
                         'columns': {'number': 3, 'percentage': [10, 60, 30]},
                         'display_line_number': True,
                         'font': {'family': 'nomal', 'size': 12},
-                        'ms_align_the_lines': 200,
+                        'geometry': '1600x1000',
+                        'ms_align_the_lines': 100,
                         'recently_files': [],
                         'selection_line_highlight': True,
                         'statusbar_element_settings':
@@ -56,12 +87,11 @@ class Main(Frame):
             with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
                 if set(data.keys()) & set(self.settings.keys()) != set(self.settings.keys()):
-                    raise KeyError
+                    raise KeyError('Settings file is incomplete')
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
-        except (KeyError, AttributeError) as e:
-            print(e)
-            with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.safe_dump(self.settings, f, allow_unicode=True)
+        except (KeyError, yaml.YAMLError) as e:
+            log.error(e)
+            self.update_setting_file()
             t = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
             error_filename = f'settings(error)_{t}.yaml'
             settingFile_Error_message = '設定ファイルに不備がありました\n'\
@@ -73,34 +103,51 @@ class Main(Frame):
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         ## 存在しない場合新規作成
         except FileNotFoundError as e:
-            print(e)
-            with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.safe_dump(self.settings, f, allow_unicode=True)
+            log.error(e)
+            self.update_setting_file()
             settingFile_Error_message = '設定ファイルが存在しなかったため作成しました'
             initialization = True
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
-        else: self.settings = data
+        else:
+            self.settings = data
+            log.info('Settings loaded successfully')
 
         # 設定ファイルから各設定を読み込み
+        ## ウィンドウサイズ
+        if self.settings['geometry'] == 'Full Screen':
+            self.master.state('zoomed')
+        else:
+            try:
+                self.master.geometry(self.settings['geometry'])
+            except tkinter.TclError as e:
+                print(e)
         ## テーマを設定
         self.windowstyle = Style()
         self.windowstyle.theme_use(self.settings['themename'])
         ## フォント設定
         self.font = font.Font(family=self.settings['font']['family'], size=self.settings['font']['size'])
         ## 列数
-        self.number_of_columns = self.settings['columns']['number']
+        self.number_of_columns: int = self.settings['columns']['number']
         ## 列比率
         self.column_percentage = [x*0.01 for x in self.settings['columns']['percentage']]
         for _ in range(10-len(self.column_percentage)):
             self.column_percentage.append(0)
         ## 折り返し
-        self.wrap = self.settings['wrap']
+        self.wrap: str = self.settings['wrap']
         ## 行間
-        self.between_lines = self.settings['between_lines']
+        self.between_lines: int = self.settings['between_lines']
         ## 行番号
-        self.display_line_number = self.settings['display_line_number']
+        self.display_line_number: bool = self.settings['display_line_number']
         ## 選択行の強調
-        self.selection_line_highlight = self.settings['selection_line_highlight']
+        self.selection_line_highlight: bool = self.settings['selection_line_highlight']
+        ## 自動保存機能
+        self.do_autosave: bool = self.settings['autosave']
+        ## 自動保存頻度
+        self.autosave_frequency: int = self.settings['autosave_frequency']
+        ## バックアップ機能
+        self.do_backup: bool = self.settings['backup']
+        ## バックアップ頻度
+        self.backup_frequency: int = self.settings['backup_frequency']
 
         self.filepath = ''
         self.data0 = {}
@@ -110,14 +157,15 @@ class Main(Frame):
         self.data0['version'] = __projversion__
         self.data = self.data0
         self.edit_history = deque([self.data])
-        self.undo_history = deque([])
+        self.undo_history: deque[dict] = deque([])
         self.recently_files: list = self.settings['recently_files']
         try:
-            self.initialdir = path.dirname(self.recently_files[0])
+            self.initialdir = os.path.dirname(self.recently_files[0])
         except (IndexError, TypeError):
             self.initialdir = ''
         self.text_place = (1.0, 1.0)
         self.ms_align_the_lines = self.settings['ms_align_the_lines']
+        self.md_position = (int(self.winfo_screenwidth()/2-250), int(self.winfo_screenheight()/2-100))
 
         # メニューバーの作成
         menubar = Menu()
@@ -128,6 +176,7 @@ class Main(Frame):
         self.menu_file.add_command(label='ファイルを開く(O)', command=self.file_open, accelerator='Ctrl+O', underline=8)
         self.menu_file.add_command(label='上書き保存(S)', command=self.file_over_write_save, accelerator='Ctrl+S', underline=6)
         self.menu_file.add_command(label='名前をつけて保存(A)', command=self.file_save_as, accelerator='Ctrl+Shift+S', underline=9)
+        self.menu_file.add_command(label='エクスポート(E)', command=ExportWindow, accelerator='Ctrl+Shift+E', underline=7)
         self.menu_file.add_command(label='プロジェクト設定(F)', command=ProjectFileSettingWindow, underline=9)
 
         ###メニューバー - ファイル - 最近使用したファイル
@@ -139,7 +188,7 @@ class Main(Frame):
             self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
             self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
             self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
-        except IndexError as e:
+        except IndexError:
             pass
 
         self.menu_file.add_cascade(label='最近使用したファイル(R)', menu=self.menu_file_recently, underline=11)
@@ -168,7 +217,8 @@ class Main(Frame):
         ## メニューバー - ヘルプ
         self.menu_help = Menu(menubar, tearoff=True)
         self.menu_help.add_command(label='ヘルプを表示(H)', command=HelpWindow, accelerator='F1', underline=7)
-        self.menu_help.add_command(label='CastellaEditorについて(A)', command=AboutWindow, underline=16)
+        self.menu_help.add_command(label='初回起動メッセージを表示(F)', command=lambda: self.file_open(file=os.path.join(os.path.dirname(__file__), 'hello.txt')), underline=13)
+        self.menu_help.add_command(label='SoroEditorについて(A)', command=AboutWindow, underline=16)
         self.menu_help.add_command(label='ライセンス情報(L)', command=ThirdPartyNoticesWindow, underline=8)
         menubar.add_cascade(label='ヘルプ(H)', menu=self.menu_help, underline=4)
 
@@ -189,7 +239,7 @@ class Main(Frame):
 
         self.make_text_editor()
 
-        # 初期フォーカスを列1のタイトルにセット
+        # フォーカスを列1のタイトルにセット
         self.entrys[0].focus_set()
 
         # ステータスバー要素を作成
@@ -234,10 +284,12 @@ class Main(Frame):
             return ('label', text)
         ## ショートカットキー
         self.hotkeys1 = ('label', '[Ctrl+O]: 開く  [Ctrl+S]: 上書き保存  [Ctrl+Shift+S]: 名前をつけて保存  [Ctrl+R]: 最後に使ったファイルを開く（起動直後のみ）')
-        self.hotkeys2 = ('label', '[Ctrl+^]: 検索・置換  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す')
-        self.hotkeys3 = ('label', '[Ctrl+Q][Ctrl+,]: 左に移る  [Ctrl+W][Ctrl+.]: 右に移る')
+        self.hotkeys2 = ('label', '[Ctrl+Enter]: 1行追加(下)  [Ctrl+Shift+Enter]: 1行追加(上)  [Ctrl+^]: 検索・置換  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す')
+        self.hotkeys3 = ('label', '[Ctrl+Q][Alt+,]: 左に移る  [Ctrl+W][Alt+.]: 右に移る')
+        ## 各機能情報
+        self.infomation = ('label', f'自動保存: {self.do_autosave}, バックアップ: {self.do_backup}')
         ## 顔文字
-        self.kaomoji = ''
+        self.kaomoji = ('label', choice(['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)']))
         ## ツールボタン
         self.toolbutton_open = ('button', 'ファイルを開く[Ctrl+O]', self.file_open)
         self.toolbutton_over_write_save = ('button', '上書き保存[Ctrl+S]', self.file_over_write_save)
@@ -246,7 +298,7 @@ class Main(Frame):
         self.statusbar_message = ('label', 'ステータスバーの表示項目はメニューバーの 設定-ステータスバー から変更できます')
 
         # ステータスバー作成メソッド
-        def make_toolbar_element(elementtype=None, text=None, commmand=None):
+        def make_statusbar_element(elementtype=None, text=None, commmand=None):
             if elementtype == 'label':
                 return Label(text=text)
             if elementtype == 'button':
@@ -261,6 +313,8 @@ class Main(Frame):
             elif name == 'hotkeys1': return(self.hotkeys1)
             elif name == 'hotkeys2': return(self.hotkeys2)
             elif name == 'hotkeys3': return(self.hotkeys3)
+            elif name == 'infomation': return self.infomation
+            elif name == 'kaomoji': return self.kaomoji
             elif name == 'toolbutton_open': return(self.toolbutton_open)
             elif name == 'toolbutton_over_write_save': return(self.toolbutton_over_write_save)
             elif name == 'toolbutton_save_as': return(self.toolbutton_save_as)
@@ -287,7 +341,7 @@ class Main(Frame):
                 self.statusbar_element_dict[num] = dict()
                 for i,e in zip(range(len(l2)), l2):
                     if not e: continue
-                    self.statusbar_element_dict[num][i] = make_toolbar_element(*e)
+                    self.statusbar_element_dict[num][i] = make_statusbar_element(*e)
                 for e in self.statusbar_element_dict[num].values():
                     i = 1 if num < 4 else 0
                     self.statusbars[num].add(e, weight=i)
@@ -344,7 +398,7 @@ class Main(Frame):
         def reload(e):
             statusbar_element_reload()
             if self.selection_line_highlight: self.highlight()
-            self.change_text_widget_state()
+            self.set_text_widget_editable()
         self.master.bind('<KeyPress>', reload)
         self.master.bind('<KeyRelease>', reload)
         self.master.bind('<Button>', reload)
@@ -359,9 +413,9 @@ class Main(Frame):
         self.menu_file.bind_all('<Control-S>', self.file_save_as)
         self.master.bind('<Control-P>', SettingWindow)
         self.master.bind('<Control-w>', focus_to_right)
-        self.master.bind('<Control-.>', focus_to_right)
+        self.master.bind('<Alt-.>', focus_to_right)
         self.master.bind('<Control-q>', focus_to_left)
-        self.master.bind('<Control-,>', focus_to_left)
+        self.master.bind('<Alt-,>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
         self.master.bind('<Control-Return>', lambda e: self.newline(e, 1))
         self.master.bind('<Control-Shift-Return>', lambda e: self.newline(e, 0))
@@ -369,398 +423,46 @@ class Main(Frame):
         self.master.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
         self.master.bind('<Control-Y>', self.print_history)
+        self.master.bind('<F1>', lambda e: HelpWindow())
+        self.master.bind('<Control-E>', lambda e: ExportWindow())
 
         # 各パーツを設置
         for w in self.statusbars[0:4]:
-            w.pack(fill=X, side=BOTTOM, padx=5, pady=3) if len(w.panes()) else print(f'{w} was not packed')
+            if len(w.panes()):
+                w.pack(fill=X, side=BOTTOM, padx=5, pady=3)
         for w in self.statusbars[4:6]:
-            w.pack(fill=X) if len(w.panes()) else print(f'{w} was not packed')
+            if len(w.panes()):
+                w.pack(fill=X)
 
         self.f2.pack(fill=Y, side=RIGHT, pady=18)
         self.vbar.pack(fill=Y, expand=YES)
         self.f1.pack(fill=BOTH, expand=YES)
 
         # 設定ファイルに異常があり初期化した場合、その旨を通知する
-        if self.settingFile_Error_md: self.settingFile_Error_md.show()
+        if self.settingFile_Error_md:
+            self.settingFile_Error_md.show(self.md_position)
 
         # 設定ファイルが存在しなかった場合、初回起動と扱う
         if initialization:
-            self.file_open(file=path.join(path.dirname(__file__), 'hello.txt'))
+            self.file_open(file=os.path.join(os.path.dirname(__file__), 'hello.txt'))
 
         # ファイルを渡されているとき、そのファイルを開く
         if len(sys.argv) > 1:
             self.file_open(file=sys.argv[1])
 
+        self.master.after(1000, self.change_window_title)
         self.master.after(self.ms_align_the_lines, self.align_the_lines)
+        self.master.after(self.autosave_frequency, self.autosave)
+        self.master.after(self.backup_frequency, self.backup)
 
 
-    # 以下、ファイルを開始、保存、終了に関するメソッド
-    def file_open(self, event=None, file: str|None=None):
-        '''
-        '''
-        self.file_close()
-        # 開くファイルを指定されている場合、ファイル選択ダイアログをスキップする
-        if file:
-            self.filepath = file
-        else:
-            newfilepath = filedialog.askopenfilename(
-                title = '編集ファイルを選択',
-                initialdir = self.initialdir,
-                initialfile='file.cep',
-                filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml'), ('その他', '.*'), ('ThreeCrowsプロジェクトファイル', '.tcs')],
-                defaultextension='cep')
-            if newfilepath: self.filepath = newfilepath
-
-        print(self.filepath)
-
-        if self.filepath:
-            try:
-                with open(self.filepath, mode='rt', encoding='utf-8') as f:
-                    newdata: dict = yaml.safe_load(f)
-                    if 'version' in newdata.keys():
-                        self.data = newdata
-                    else:
-                        raise(KeyError)
-                    data = self.data0.copy()
-                    data.update(newdata)
-                    if not 'columns' in data.keys():
-                        data['columns'] = {}
-                    if not 'number' in data['columns'].keys():
-                        data['columns']['number'] = self.settings['columns']['number']
-                    if not 'percentage' in data['columns'].keys():
-                        data['columns']['percentage'] = self.settings['columns']['percentage']
-
-                    self.number_of_columns = data['columns']['number']
-                    self.column_percentage = [x*0.01 for x in data['columns']['percentage']]
-                    for _ in range(10-len(self.column_percentage)):
-                        self.column_percentage.append(0)
-
-                    try:
-                        self.make_text_editor()
-                    except KeyError:
-                        self.data = self.edit_history[0]
-                        self.make_text_editor()
-                        raise KeyError
-
-                    self.edit_history.clear()
-
-                    for i in range(self.number_of_columns, 10):
-                        mg_exist_hidden_data = MessageDialog(f'列{i+1}にデータがありますが、表示されません\n'
-                                                            f'title: {data[i]["title"]}\n'
-                                                            f'text: {data[i]["text"][0:10]}...\n'
-                                                            '確認するにはプロジェクトファイルを普通のテキストエディタで開いて直接データを見るか、'
-                                                            'ファイル - プロジェクト設定 からこのファイルで表示する列を変更し、'
-                                                            f'列{self.number_of_columns+i-1}が見えるようにしてください', 'CastellaEditor - 隠されたデータ')
-                        if data[i]['title']: mg_exist_hidden_data.show()
-                        elif data[i]['text']: mg_exist_hidden_data.show()
-                    self.entrys[0].focus_set()
-                    self.edit_history.appendleft(data)
-
-                self.initialdir = path.dirname(self.filepath)
-                self.master.title(f'CastellaEditor - {self.filepath}')
-
-                # 最近使用したファイルのリストを修正し、settings.yamlに反映
-                self.recently_files.insert(0, self.filepath)
-                # '\'を'/'に置換
-                self.recently_files = [v.replace('\\', '/') for v in self.recently_files]
-                # 重複を削除
-                self.recently_files = list(dict.fromkeys(self.recently_files))
-                # 5つ以内になるよう削除
-                del self.recently_files[4:-1]
-                self.settings['recently_files'] = self.recently_files
-                with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                    yaml.dump(self.settings, f, allow_unicode=True)
-                # 更新
-                for i in self.recently_files:
-                    self.menu_file_recently.delete(0)
-                try:
-                    self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
-                    self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
-                    self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
-                    self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
-                    self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
-                except IndexError:
-                    pass
-
-            except FileNotFoundError: # ファイルが存在しなかった場合
-                md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが見つかりません')
-                md.show()
-                # 最近使用したファイルに見つからなかったファイルが入っている場合、削除しsettins.yamlに反映する
-                if self.filepath in self.recently_files:
-                    self.recently_files.remove(self.filepath)
-                    self.settings['recently_files'] = self.recently_files
-                with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                    yaml.dump(self.settings, f, allow_unicode=True)
-
-            except (KeyError, UnicodeDecodeError, yaml.scanner.ScannerError): # ファイルが読み込めなかった場合
-                md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが読み込めませんでした。\nファイルが破損している、またはCastellaEditorプロジェクトファイルではない可能性があります')
-                md.show()
-
-    def file_save_as(self, event=None):
-        self.filepath = filedialog.asksaveasfilename(
-            title='名前をつけて保存',
-            initialdir=self.initialdir,
-            initialfile='noname',
-            filetypes=[('CastellaEditorプロジェクトファイル', '.cep'), ('YAMLファイル', '.yaml'), ('その他', '.*')],
-            defaultextension='cep'
-        )
-        if self.filepath:
-            print(self.filepath)
-            self.save_file(self.filepath)
-            self.master.title(f'CastellaEditor - {self.filepath}')
-            return True
-        else: return False
-
-    def file_over_write_save(self, event=None):
-        if self.filepath:
-            self.save_file(self.filepath)
-            return True
-        else:
-            if self.file_save_as(): return True
-            else: return False
-
-    def save_file(self, path):
-        try:
-            with open(path, mode='wt', encoding='utf-8') as f:
-                current_data = self.get_current_data()
-                self.data = current_data
-                yaml.safe_dump(current_data, f, encoding='utf-8', allow_unicode=True)
-        except FileNotFoundError as e:
-            print(e)
-
-        # 最近使用したファイルのリストを修正し、settings.yamlに反映
-        self.recently_files.insert(0, self.filepath)
-        # 重複を削除
-        self.recently_files = list(dict.fromkeys(self.recently_files))
-        # 5つ以内になるよう削除
-        del self.recently_files[4:-1]
-        self.settings['recently_files'] = self.recently_files
-        with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-            yaml.dump(self.settings, f, allow_unicode=True)
-        # 更新
-        for _ in self.recently_files:
-            self.menu_file_recently.delete(0)
-        try:
-            self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
-            self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
-            self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
-            self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
-            self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
-        except IndexError:
-            pass
-
-    def file_close(self, shouldExit=False):
-
-        current_data = self.get_current_data()
-
-        if shouldExit:
-            message = '更新内容が保存されていません。アプリを終了しますか。'
-            title = 'CastellaEditor - 終了確認'
-            buttons=['保存して終了:success', '保存せず終了:danger', 'キャンセル']
-        else:
-            message = '更新内容が保存されていません。ファイルを閉じ、ファイルを変更しますか'
-            title = 'CastellaEditor - 確認'
-            buttons=['保存して変更:success', '保存せず変更:danger', 'キャンセル']
-
-        if self.data == current_data:
-            self.master.destroy() if shouldExit else 0
-        elif self.data != current_data:
-            mg = MessageDialog(message=message, title=title, buttons=buttons)
-            mg.show()
-            if mg.result in ('保存せず終了', '保存せず変更'):
-                if shouldExit:
-                    self.master.destroy()
-                else: print(buttons[1])
-            elif mg.result in ('保存して終了', '保存して変更'):
-                if self.file_over_write_save():
-                    if shouldExit:
-                        self.master.destroy()
-                    else: print(buttons[2])
-            else:
-                pass
-
-    def open_last_file(self, event=None):
-        if not self.filepath:
-            self.file_open(file=self.recently_files[0])
-
-    # 以下、エディターの編集に関するメソッド
-    def letter_count(self, obj:ScrolledText|Text|str=''):
-        if type(obj) == ScrolledText or Text:
-            return len(obj.get('1.0', 'end-1c').replace('\n', ''))
-        elif type(obj) == str:
-            return len(obj)
-
-    def line_count(self, obj:ScrolledText|Text|str='', debug=False):
-        if type(obj) == ScrolledText or Text:
-            obj = obj.get('1.0', 'end-1c')
-        elif type(obj) == str:
-            pass
-        if not debug:
-            obj = obj.rstrip('\r\n')
-        return obj.count('\n') + 1 if obj else 0
-
-    def get_current_data(self):
-        current_data = {}
-        # 辞書の元を作る
-        for i in range(10):
-            current_data[i] = {'text': '', 'title': ''}
-        # ファイルの初期データで上書きする（表示されていない列のデータ消滅対策）
-        current_data.update(self.data)
-        # 表示されている列のデータで上書きする
-        for i in range(self.number_of_columns):
-            current_data[i] = {}
-            current_data[i]['text'] = self.maintexts[i].get('1.0',END).rstrip('\r\n')
-            current_data[i]['title'] = self.entrys[i].get()
-        # 設定部分を書き込む
-        current_data['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
-        for _ in range(10-len(current_data['columns']['percentage'])):
-            current_data['columns']['percentage'].append(0)
-        current_data['version'] = __projversion__
-        return current_data
-
-    def recode_edit_history(self, event=None):
-        current_data = self.get_current_data()
-        if current_data != self.edit_history[0]:
-            print('recode')
-            self.edit_history.appendleft(current_data)
-            self.undo_history.clear()
-
-    def undo(self, even=None):
-
-        if len(self.edit_history) <= 1:
-            return
-
-        data_new = self.edit_history[0]
-        data_old = self.edit_history[1]
-
-        self.change_text_widget_state(mode=1)
-
-        for i in range(10):
-            if data_new[i] != data_old[i]:
-                if data_new[i]['title'] != data_old[i]['title']:
-                    print(f'undo_title_{i}')
-                    self.entrys[i].delete(0, END)
-                    self.entrys[i].insert(END, data_old[i]['title'])
-                elif data_new[i]['text'] != data_old[i]['text']:
-                    print(f'undo_text_{i}')
-                    diff = difflib.SequenceMatcher(None, data_new[i]['text'].splitlines(True), data_old[i]['text'].splitlines(True))
-                    for t in diff.get_opcodes():
-                        if t[0] in ('replace', 'delete', 'insert'):
-                            if t[0] == 'replace':
-                                self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
-                                for s in data_old[i]['text'].splitlines(True)[t[3]:t[4]]:
-                                    self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
-                            elif t[0] == 'delete':
-                                self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
-                            elif t[0] == 'insert':
-                                for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
-                                    self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
-                        elif t[0] == 'equal':
-                            pass
-
-        self.undo_history.appendleft(self.edit_history.popleft())
-        self.change_text_widget_state(mode=0)
-
-    def repeat(self, event=None):
-
-        if len(self.undo_history) == 0:
-            return
-
-        data_new = self.edit_history[0]
-        data_old = self.undo_history[0]
-
-        self.change_text_widget_state(mode=1)
-
-        for i in range(10):
-            if data_new[i] != data_old[i]:
-                if data_new[i]['title'] != data_old[i]['title']:
-                    print(f'repeat_title_{i}')
-                    self.entrys[i].delete(0, END)
-                    self.entrys[i].insert(END, data_old[i]['title'])
-                elif data_new[i]['text'] != data_old[i]['text']:
-                    print(f'repeat_text_{i}')
-                    diff = difflib.SequenceMatcher(None, data_new[i]['text'].splitlines(True), data_old[i]['text'].splitlines(True))
-                    for t in diff.get_opcodes():
-                        if t[0] == 'replace':
-                            self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
-                            for s in data_old[i]['text'].splitlines(True)[t[3]:t[4]]:
-                                self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
-                        elif t[0] == 'delete':
-                            self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
-                        elif t[0] == 'insert':
-                            for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
-                                self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
-                        elif t[0] == 'equal':
-                            pass
-
-        self.edit_history.appendleft(self.undo_history.popleft())
-        self.change_text_widget_state(mode=0)
-
-    def print_history(self, e=None):
-        print(self.edit_history)
-
-    def cut(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            if self.master.focus_get().tag_ranges(SEL):
-                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
-                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
-        elif self.master.focus_get().winfo_class() == 'TEntry':
-            t = self.master.focus_get().get()
-            self.master.focus_get().delete(0, END)
-        self.clipboard_append(t)
-        self.recode_edit_history()
-
-    def copy(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            if self.master.focus_get().tag_ranges(SEL):
-                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
-        elif self.master.focus_get().winfo_class() == 'TEntry':
-            t = self.master.focus_get().get()
-        self.clipboard_append(t)
-
-    def paste(self, e=None):
-        t = self.clipboard_get()
-        if self.master.focus_get().winfo_class() == 'Text':
-            if self.master.focus_get().tag_ranges(SEL):
-                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
-        self.master.focus_get().insert(INSERT, t)
-        self.recode_edit_history()
-
-    def select_all(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
-        elif self.master.focus_get().winfo_class() == 'TEntry':
-            pass
-
-    def select_line(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
-        elif self.master.focus_get().winfo_class() == 'TEntry':
-            pass
-
-    def newline(self, e, mode=0):
-        '''
-        行を追加する
-
-        mode: int=[0, 1]
-
-        mode=0: 上に追加
-        mode=1: 下に追加
-        '''
-        if type(e.widget) == tkinter.Text:
-
-            self.change_text_widget_state(mode=1)
-
-            e.widget.delete(INSERT+'-1c', INSERT)
-            if mode == 0: insert = e.widget.index(INSERT+ ' linestart')
-            elif mode == 1: insert = e.widget.index(INSERT+ '+1line linestart')
-            for w in self.maintexts:
-                w.insert(insert, '\n')
-                w.see(e.widget.index(INSERT))
-            if mode == 0: e.widget.mark_set(INSERT, INSERT+'-1line linestart')
-            elif mode == 1: e.widget.mark_set(INSERT, INSERT+'+1line linestart')
-
-            self.change_text_widget_state(mode=0)
+    def convert_drive_to_uppercase(self, file_path: str) -> str:
+        """
+        ファイルパスの先頭にあるドライブ名を大文字に変換した文字列を返す関数。
+        """
+        drive, tail = os.path.splitdrive(file_path)
+        drive = drive.upper()
+        return os.path.join(drive, tail)
 
     def make_text_editor(self):
         '''
@@ -826,59 +528,501 @@ class Main(Frame):
             self.maintexts[i].pack(fill=BOTH, expand=YES, padx=5, pady=10)
 
         ## ダミーテキスト（スクロールバーのための）
-        self.dammy_column = (Frame(self.f1_2, padding=0))
-        self.dammy_entry = (Entry(self.dammy_column, font=self.font))
-        self.dammy_maintext = (Text(self.dammy_column, wrap=self.wrap,
+        self.dummy_column = (Frame(self.f1_2, padding=0))
+        self.dummy_entry = (Entry(self.dummy_column, font=self.font))
+        self.dummy_maintext = (Text(self.dummy_column, wrap=self.wrap,
                                 font=self.font,
                                 spacing3=self.between_lines))
-        self.dammy_column.place(relx=1.0, rely=0.0, relwidth=1.0, relheight=1.0)
-        self.dammy_entry.pack(fill=X, expand=False, padx=5, pady=0)
-        self.dammy_maintext.pack(fill=BOTH, expand=YES, padx=5, pady=10)
+        self.dummy_column.place(relx=1.0, rely=0.0, relwidth=1.0, relheight=1.0)
+        self.dummy_entry.pack(fill=X, expand=False, padx=5, pady=0)
+        self.dummy_maintext.pack(fill=BOTH, expand=YES, padx=5, pady=10)
 
         for i in range(self.number_of_columns):
             self.entrys[i].insert(END, self.data[i]['title'])
             self.maintexts[i].insert(END, self.data[i]['text'])
 
-        self.align_the_number_of_rows()
+        self.align_number_of_rows()
 
-        self.textboxes = self.maintexts + [self.dammy_maintext]
+        self.textboxes = self.maintexts + [self.dummy_maintext]
         try:
             self.textboxes.append(self.line_number_box)
         except AttributeError as e:
             print(e)
 
-    def align_the_number_of_rows(self, e=None):
+        for w in self.maintexts:
+            w.bind('<Button-3>', self.popup)
+
+        self.set_text_widget_editable(mode=2)
+
+    def align_number_of_rows(self, e=None):
         '''
-        各列の行数をそろえるメソッド
-        とりあえず10000行まで改行を入れる事で代用
+        各列の行数を揃えるメソッド
         '''
-        data = self.get_current_data()
+        self.set_text_widget_editable(mode=1)
+        # 各列の行数を揃える
         for i in range(self.number_of_columns):
-            newdata = data[i]['text']+'\n'*(9999-self.line_count(self.maintexts[i]))
-            self.maintexts[i].delete(1.0, END)
-            self.maintexts[i].insert(END, newdata)
+            # 行数の差分を計算する
+            line_count_diff = 10000 - self.line_count(self.maintexts[i])
+            if line_count_diff > 0:
+                # 行数が足りない場合、不足分の改行を追加する
+                self.maintexts[i].insert(END, '\n' * line_count_diff)
+        # カーソルを最初の列に移動する
         if e:
             self.maintexts[0].see(INSERT)
+        self.set_text_widget_editable()
+
+    # 以下、ファイルを開始、保存、終了に関するメソッド
+    def file_open(self, e=None, file: str|None=None):
+        '''
+        '''
+        self.file_close()
+        # 開くファイルを指定されている場合、ファイル選択ダイアログをスキップする
+        if file:
+            # ドライブ文字を大文字にする
+            newfilepath = self.convert_drive_to_uppercase(file)
+        else:
+            newfilepath = filedialog.askopenfilename(
+                title = '編集ファイルを選択',
+                initialdir = self.initialdir,
+                initialfile='file.sep',
+                filetypes=[('SoroEditorプロジェクトファイル', '.sep'), ('YAMLファイル', '.yaml'), ('その他', '.*'), ('ThreeCrowsプロジェクトファイル', '.tcs'), ('CastellaEditorプロジェクトファイル', '.cep')],
+                defaultextension='sep')
+
+        if newfilepath:
+            if os.path.exists(newfilepath):
+                self.filepath = newfilepath
+            else:
+                return
+
+        log.info(f'Opening file: {newfilepath}')
+
+        if self.filepath:
+            try:
+                with open(self.filepath, mode='rt', encoding='utf-8') as f:
+                    newdata: dict = yaml.safe_load(f)
+                    if 'version' in newdata.keys():
+                        self.data = newdata
+                    else:
+                        raise(KeyError)
+                    data = self.data0.copy()
+                    data.update(newdata)
+                    if not 'columns' in data.keys():
+                        data['columns'] = {}
+                    if not 'number' in data['columns'].keys():
+                        data['columns']['number'] = self.settings['columns']['number']
+                    if not 'percentage' in data['columns'].keys():
+                        data['columns']['percentage'] = self.settings['columns']['percentage']
+
+                    self.number_of_columns = data['columns']['number']
+                    self.column_percentage = [x*0.01 for x in data['columns']['percentage']]
+                    for _ in range(10-len(self.column_percentage)):
+                        self.column_percentage.append(0)
+
+                    try:
+                        self.make_text_editor()
+                    except KeyError:
+                        self.data = self.edit_history[0]
+                        self.make_text_editor()
+                        raise KeyError
+
+                    self.edit_history.clear()
+
+                    for i in range(self.number_of_columns, 10):
+                        mg_exist_hidden_data = MessageDialog(f'列{i+1}にデータがありますが、表示されません\n'
+                                                            f'title: {data[i]["title"]}\n'
+                                                            f'text: {data[i]["text"][0:10]}...\n'
+                                                            '確認するにはプロジェクトファイルを普通のテキストエディタで開いて直接データを見るか、'
+                                                            'ファイル - プロジェクト設定 からこのファイルで表示する列を変更し、'
+                                                            f'列{self.number_of_columns+i-1}が見えるようにしてください', 'SoroEditor - 隠されたデータ')
+                        if data[i]['title']: mg_exist_hidden_data.show(self.md_position)
+                        elif data[i]['text']: mg_exist_hidden_data.show(self.md_position)
+                    self.entrys[0].focus_set()
+                    self.edit_history.appendleft(data)
+
+                self.initialdir = os.path.dirname(self.filepath)
+
+                # 最近使用したファイルのリストを修正し、settings.yamlに反映
+                self.recently_files.insert(0, self.filepath)
+                # '\'を'/'に置換
+                self.recently_files = [v.replace('\\', '/') for v in self.recently_files]
+                # 重複を削除
+                self.recently_files = list(dict.fromkeys(self.recently_files))
+                # 5つ以内になるよう削除
+                del self.recently_files[4:-1]
+                self.settings['recently_files'] = self.recently_files
+                # 設定ファイルに書き込み
+                self.update_setting_file()
+                # 更新
+                for i in self.recently_files:
+                    self.menu_file_recently.delete(0)
+                try:
+                    self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
+                    self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
+                    self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
+                    self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
+                    self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+                except IndexError:
+                    pass
+
+            except FileNotFoundError as e:
+                log.error(e)
+                md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが見つかりません')
+                md.show(self.md_position)
+                # 最近使用したファイルに見つからなかったファイルが入っている場合、削除しsettins.yamlに反映する
+                if newfilepath in self.recently_files:
+                    self.recently_files.remove(newfilepath)
+                    self.settings['recently_files'] = self.recently_files
+                # 設定ファイルに書き込み
+                self.update_setting_file()
+                # 更新
+                try:
+                    for _ in range(5):
+                        self.menu_file_recently.delete(0)
+                except tkinter.TclError:
+                    pass
+                try:
+                    if self.filepath:
+                        self.menu_file_recently.add_command(label=self.filepath + ' (現在のファイル)')
+                    else:
+                        self.menu_file_recently.add_command(label=self.recently_files[0], command=lambda:self.file_open(file=self.recently_files[0]))
+                    self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
+                    self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
+                    self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
+                    self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+                except IndexError:
+                    pass
+                return
+
+            except (KeyError, UnicodeDecodeError, yaml.scanner.ScannerError) as e:
+                log.error(f'Cannot open file: {e}')
+                # ファイルが読み込めなかった場合
+                md = MessageDialog(
+                    title='TreeCrows - エラー',
+                    alert=True,
+                    buttons=['OK'],
+                    message='ファイルが読み込めませんでした。\nファイルが破損している、またはSoroEditorプロジェクトファイルではない可能性があります')
+                md.show(self.md_position)
+
+            else:
+                log.info(f'Success opening file: {self.filepath}')
+                self.align_the_lines(1.0, 1.0, False)
+
+    def file_save_as(self, e=None) -> bool:
+        self.filepath = filedialog.asksaveasfilename(
+            title='名前をつけて保存',
+            initialdir=self.initialdir,
+            initialfile='noname',
+            filetypes=[('SoroEditorプロジェクトファイル', '.sep'), ('YAMLファイル', '.yaml'), ('その他', '.*')],
+            defaultextension='sep'
+        )
+        if self.filepath:
+            print(self.filepath)
+            self.save_file(self.filepath)
+            return True
+        else:
+            return False
+
+    def file_over_write_save(self, e=None) -> bool:
+        if self.filepath:
+            self.save_file(self.filepath)
+            return True
+        else:
+            if self.file_save_as():
+                return True
+            else:
+                return False
+
+    def save_file(self, file_path):
+        '''
+        データを保存する
+        '''
+        try:
+            with open(file_path, mode='wt', encoding='utf-8') as f:
+                # 現在のデータを読み込む
+                current_data = self.get_current_data()
+                # ファイルに書き込む
+                yaml.safe_dump(current_data, f, encoding='utf-8', allow_unicode=True, canonical=True)
+                # 変更前のデータを更新する（変更検知に用いられる）
+                self.data = current_data
+        except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
+            error_type = type(e).__name__
+            error_message = str(e)
+            log.error(f"An error of type {error_type} occurred while writing to the file {file_path}: {error_message}")
+        else:
+            log.info(f'Save file: {file_path}')
+
+        self.update_recently_files()
+
+    def update_setting_file(self):
+        '''
+        設定ファイルをMain.settingsの内容に書き換える
+        '''
+        try:
+            with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
+                yaml.dump(self.settings, f, allow_unicode=True)
+        except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
+            error_type = type(e).__name__
+            error_message = str(e)
+            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+        else:
+            log.info('Update setting file')
+
+    def update_recently_files(self):
+        '''
+        最近使用したファイルのリストを修正し、settings.yamlに反映する
+        '''
+        self.recently_files.insert(0, self.filepath)
+        # 重複を削除
+        self.recently_files = list(dict.fromkeys(self.recently_files))
+        # 5つ以内になるよう削除
+        del self.recently_files[5:]
+        # 設定に反映
+        self.settings['recently_files'] = self.recently_files
+        # 設定ファイルに書き込み
+        self.update_setting_file()
+        # メニューを更新
+        for _ in self.recently_files:
+            self.menu_file_recently.delete(0)
+        try:
+            self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
+            self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
+            self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
+            self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
+            self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+        except IndexError:
+            pass
+
+    def file_close(self, shouldExit=False):
+
+        current_data = self.get_current_data()
+
+        if shouldExit:
+            message = '更新内容が保存されていません。アプリを終了しますか。'
+            title = 'SoroEditor - 終了確認'
+            buttons=['保存して終了:success', '保存せず終了:danger', 'キャンセル']
+        else:
+            message = '更新内容が保存されていません。ファイルを閉じ、ファイルを変更しますか'
+            title = 'SoroEditor - 確認'
+            buttons=['保存して変更:success', '保存せず変更:danger', 'キャンセル']
+
+        if self.data == current_data:
+            if shouldExit:
+                self.master.destroy()
+        elif self.data != current_data:
+            mg = MessageDialog(message=message, title=title, buttons=buttons)
+            mg.show(self.md_position)
+            if mg.result in ('保存せず終了', '保存せず変更'):
+                if shouldExit:
+                    self.master.destroy()
+            elif mg.result in ('保存して終了', '保存して変更'):
+                if self.file_over_write_save():
+                    if shouldExit:
+                        self.master.destroy()
+            else:
+                pass
+
+    def open_last_file(self, e=None):
+        if not self.filepath:
+            self.file_open(file=self.recently_files[0])
+
+    # 以下、エディターの編集に関するメソッド
+    def letter_count(self, obj:ScrolledText|Text|str=''):
+        if type(obj) == ScrolledText or Text:
+            return len(obj.get('1.0', 'end-1c').replace('\n', ''))
+        elif type(obj) == str:
+            return len(obj)
+
+    def line_count(self, obj:ScrolledText|Text|str='', debug=False):
+        if type(obj) == ScrolledText or Text:
+            obj = obj.get('1.0', 'end-1c')
+        elif type(obj) == str:
+            pass
+        if not debug:
+            obj = obj.rstrip('\r\n')
+        return obj.count('\n') + 1 if obj else 0
+
+    def get_current_data(self):
+        current_data = {}
+        # 辞書の元を作る
+        for i in range(10):
+            current_data[i] = {'text': '', 'title': ''}
+        # ファイルの初期データで上書きする（表示されていない列のデータ消滅対策）
+        current_data.update(self.data)
+        # 表示されている列のデータで上書きする
+        for i in range(self.number_of_columns):
+            current_data[i] = {}
+            current_data[i]['text'] = self.maintexts[i].get('1.0',END).rstrip('\r\n')
+            current_data[i]['title'] = self.entrys[i].get()
+        # 設定部分を書き込む
+        current_data['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
+        for _ in range(10-len(current_data['columns']['percentage'])):
+            current_data['columns']['percentage'].append(0)
+        current_data['version'] = __projversion__
+        return current_data
+
+    def recode_edit_history(self, e=None):
+        current_data = self.get_current_data()
+        if current_data != self.edit_history[0]:
+            self.edit_history.appendleft(current_data)
+            self.undo_history.clear()
+
+    def undo(self, e=None):
+
+        if len(self.edit_history) <= 1:
+            return
+
+        data_new = self.edit_history[0]
+        data_old = self.edit_history[1]
+
+        self.set_text_widget_editable(mode=1)
+
+        for i in range(10):
+            if data_new[i] != data_old[i]:
+                if data_new[i]['title'] != data_old[i]['title']:
+                    self.entrys[i].delete(0, END)
+                    self.entrys[i].insert(END, data_old[i]['title'])
+                elif data_new[i]['text'] != data_old[i]['text']:
+                    diff = difflib.SequenceMatcher(None, data_new[i]['text'].splitlines(True), data_old[i]['text'].splitlines(True))
+                    for t in diff.get_opcodes():
+                        if t[0] in ('replace', 'delete', 'insert'):
+                            if t[0] == 'replace':
+                                self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                                for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
+                                    self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                            elif t[0] == 'delete':
+                                self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                            elif t[0] == 'insert':
+                                for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
+                                    self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                        elif t[0] == 'equal':
+                            pass
+
+        self.undo_history.appendleft(self.edit_history.popleft())
+        self.set_text_widget_editable(mode=0)
+
+    def repeat(self, e=None):
+
+        if len(self.undo_history) == 0:
+            return
+
+        data_new = self.edit_history[0]
+        data_old = self.undo_history[0]
+
+        self.set_text_widget_editable(mode=1)
+
+        for i in range(10):
+            if data_new[i] != data_old[i]:
+                if data_new[i]['title'] != data_old[i]['title']:
+                    self.entrys[i].delete(0, END)
+                    self.entrys[i].insert(END, data_old[i]['title'])
+                elif data_new[i]['text'] != data_old[i]['text']:
+                    diff = difflib.SequenceMatcher(None, data_new[i]['text'].splitlines(True), data_old[i]['text'].splitlines(True))
+                    for t in diff.get_opcodes():
+                        if t[0] == 'replace':
+                            self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                            for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
+                                self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                        elif t[0] == 'delete':
+                            self.maintexts[i].delete(f'{float(t[1]+1)} linestart', f'{float(t[2]+1)} linestart')
+                        elif t[0] == 'insert':
+                            for s in reversed(data_old[i]['text'].splitlines(True)[t[3]:t[4]]):
+                                self.maintexts[i].insert(f'{float(t[1]+1)} linestart', s)
+                        elif t[0] == 'equal':
+                            pass
+
+        self.edit_history.appendleft(self.undo_history.popleft())
+        self.set_text_widget_editable(mode=0)
+
+    def print_history(self, e=None):
+        print(self.edit_history)
+
+    def cut(self, e=None):
+        if self.master.focus_get().winfo_class() == 'Text':
+            if self.master.focus_get().tag_ranges(SEL):
+                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
+                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            t = self.master.focus_get().get()
+            self.master.focus_get().delete(0, END)
+        self.clipboard_append(t)
+        self.recode_edit_history()
+
+    def copy(self, e=None):
+        if self.master.focus_get().winfo_class() == 'Text':
+            if self.master.focus_get().tag_ranges(SEL):
+                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            t = self.master.focus_get().get()
+        self.clipboard_append(t)
+
+    def paste(self, e=None):
+        t = self.clipboard_get()
+        if self.master.focus_get().winfo_class() == 'Text':
+            if self.master.focus_get().tag_ranges(SEL):
+                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
+        self.master.focus_get().insert(INSERT, t)
+        self.recode_edit_history()
+
+    def select_all(self, e=None):
+        if self.master.focus_get().winfo_class() == 'Text':
+            self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            pass
+
+    def select_line(self, e=None):
+        if self.master.focus_get().winfo_class() == 'Text':
+            self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
+        elif self.master.focus_get().winfo_class() == 'TEntry':
+            pass
+
+    def newline(self, e, mode=0):
+        '''
+        行を追加する
+
+        mode: int=[0, 1]
+
+        mode=0: 上に追加
+        mode=1: 下に追加
+        '''
+        if type(e.widget) == tkinter.Text:
+
+            self.set_text_widget_editable(mode=1)
+
+            e.widget.delete(INSERT+'-1c', INSERT)
+            if mode == 0: insert = e.widget.index(INSERT+ ' linestart')
+            elif mode == 1: insert = e.widget.index(INSERT+ '+1line linestart')
+            for w in self.maintexts:
+                w.insert(insert, '\n')
+                w.see(e.widget.index(INSERT))
+            if mode == 0: e.widget.mark_set(INSERT, INSERT+'-1line linestart')
+            elif mode == 1: e.widget.mark_set(INSERT, INSERT+'+1line linestart')
+
+            self.set_text_widget_editable(mode=0)
 
     def highlight(self):
         '''
         カーソルのある行を強調するメソッド
         '''
-        if type(self.master.focus_get()) == tkinter.Text:
+        if self.master.focus_get() in self.maintexts:
             insert = self.master.focus_get().index(INSERT)
             hilight_font = self.font.copy()
             hilight_font.config(weight='normal', slant='roman', underline=True)
-            for w in self.maintexts:
+            for w in self.maintexts: # self.textboxesにし、Main.line_number_boxにも適用しようとしたところ、日本語入力の再変換候補があらぶってしまうため断念
                 w.mark_set(INSERT, insert)
                 w.tag_delete('insert_line')
                 w.tag_add('insert_line', insert+' linestart', insert+' lineend')
                 w.tag_config('insert_line', underline=False, font=hilight_font)
+            if self.display_line_number: # 上記の問題はこのようにする事で解決。Main.textboxesに含まれるMain.dummy_maintextの影響か？
+                self.line_number_box.mark_set(INSERT, insert)
+                self.line_number_box.tag_delete('insert_line')
+                self.line_number_box.tag_add('insert_line', insert+' linestart', insert+' lineend')
+                self.line_number_box.tag_config('insert_line', underline=False, font=hilight_font)
 
     def vbar_command(self, e=None, a=None, b=None):
         '''
         縦スクロールバーが動いたときのメソッド
         '''
-        self.dammy_maintext.yview(e, a, b)
+        self.dummy_maintext.yview(e, a, b)
 
     def align_the_lines(self, top:float=None, bottom:float=None, repeat=True):
         '''
@@ -899,17 +1043,14 @@ class Main(Frame):
             if not text_places:
                 self.text_place = l[0]
 
-            if len(text_places) == 1: print('change')
-            if len(text_places) == 1: print(f'text_places[0]: {text_places[0]}')
             if len(text_places) == 1: self.text_place = text_places[0]
 
         # ダミーテキストの行数を調整
-        self.dammy_maintext_line_set()
+        self.set_dummy_text_lines()
 
-        if self.text_place[1] > self.line_count(self.dammy_maintext):
+        if self.text_place[1] > self.line_count(self.dummy_maintext):
             self.text_place = list(self.text_place)
-            print(float(self.line_count(self.dammy_maintext)))
-            self.text_place[1] = float(self.line_count(self.dammy_maintext))
+            self.text_place[1] = float(self.line_count(self.dummy_maintext))
             self.text_place = tuple(self.text_place)
 
         # 場所を設定
@@ -927,8 +1068,6 @@ class Main(Frame):
                     else False
                     for f
                     in [w.index('@0,0') for w in self.textboxes]]):
-            print('\nずれた！')
-            print([f.index('@0,0') for f in self.textboxes], self.text_place)
             for w in self.textboxes:
                 w.see('0.0')
                 w.see(self.text_place[1])
@@ -943,7 +1082,7 @@ class Main(Frame):
             self.master.after(self.ms_align_the_lines, self.align_the_lines)
 
         # 縦スクロールバーを設定
-        self.vbar.set(*self.dammy_maintext.yview())
+        self.vbar.set(*self.dummy_maintext.yview())
 
     def show_cursor_at_bottom_line(self, e=None):
         '''
@@ -959,22 +1098,27 @@ class Main(Frame):
                 for w in self.textboxes:
                     w.see(float(bottom)+0.0)
 
-    def dammy_maintext_line_set(self):
+    def set_dummy_text_lines(self):
         '''
         ダミーテキストの行数を調整するメソッド
         '''
-        i = max([self.line_count(w) for w in self.maintexts]) + 50
-        j = self.line_count(self.dammy_maintext)
-        x = j - i
-        if x < 0:
-            x = x*-1
-            for _ in range(x):
-                self.dammy_maintext.insert(END, f'd\n')
-        elif x > 0:
-            for _ in range(x):
-                self.dammy_maintext.delete(0.0, float(x))
+        # メインテキストの中で最も多い行数に50行を加えた値を計算する
+        max_line_count = max([self.line_count(w) for w in self.maintexts]) + 50
+        # ダミーテキストの行数を計算する
+        dummy_line_count = self.line_count(self.dummy_maintext)
+        # メインテキストの行数とダミーテキストの行数の差分を計算する
+        line_count_diff = dummy_line_count - max_line_count
+        # ダミーテキストの行数がメインテキストの行数よりも多い場合、超過分だけ行を削除する
+        if line_count_diff > 0:
+            for _ in range(line_count_diff):
+                self.dummy_maintext.delete(0.0, float(line_count_diff))
+        # ダミーテキストの行数がメインテキストの行数よりも少ない場合、不足分だけ行を追加する
+        if line_count_diff < 0:
+            line_count_diff = -line_count_diff
+            for _ in range(line_count_diff):
+                self.dummy_maintext.insert(END, f'd\n')
 
-    def change_text_widget_state(self, e=None, mode=0, widget=None):
+    def set_text_widget_editable(self, e=None, mode=0, widget=None):
         '''
         mode: int=[0, 1, 2]
         mode=0: 編集中でないテキストを無効にする
@@ -985,9 +1129,10 @@ class Main(Frame):
             if not widget: widget = self.master.focus_get()
             if not widget: return
             for w in self.maintexts:
-                w.config(state=DISABLED)
-            if widget.winfo_class() == 'Text':
-                widget.config(state=NORMAL)
+                if w != widget:
+                    w.config(state=DISABLED)
+                if w == widget:
+                    w.config(state=NORMAL)
         elif mode == 1:
             for w in self.maintexts:
                 w.config(state=NORMAL)
@@ -995,16 +1140,120 @@ class Main(Frame):
             for w in self.maintexts:
                 w.config(state=DISABLED)
 
+    def change_window_title(self):
+        '''
+        更新がある場合に更新ありと表示する
+        '''
+        current_data = self.get_current_data()
+        name = 'SoroEditor'
+        if self.filepath:
+            name = name + ' - ' + self.filepath
+        else:
+            name = name + ' - ' + '(無題)'
+        if current_data != self.data:
+            name = name + ' (更新あり)'
+        if not self.do_autosave:
+            name = name + ' (自動保存無効)'
+        elif self.autosave and not self.filepath:
+            name = name + ' (ファイル未保存のため自動保存無効)'
+        self.master.title(name)
+        self.master.after(500, self.change_window_title)
+
+    def backup(self):
+        '''
+        定期的にバックアップファイルにデータを保存する
+        '''
+
+        if not self.do_backup:
+            return
+        backup_max = 50
+
+        # バックアップファイル名・パスを生成する
+        backup_filename = 'backup'
+        if self.filepath:
+            backup_filename += '-' + os.path.basename(self.filepath)
+        backup_filename += '.$ep'
+        backup_filepath = os.path.join(os.path.dirname(self.filepath), backup_filename)
+
+        # 現在のデータを取得する
+        current_data = self.get_current_data()
+
+        # データをyaml形式の文字列に変換する
+        new_data = yaml.safe_dump(current_data, allow_unicode=True, canonical=True)
+
+        # 新しいデータにタイムスタンプを追加する
+        timestamp = datetime.datetime.now().strftime('# %Y-%m-%d-%H-%M-%S\n')
+        new_data: list[str] = list(new_data.splitlines(True))
+        new_data.insert(1, timestamp)
+        new_data.append('\n')
+
+        # バックアップファイルを読み込み、データを取得する
+        try:
+            with open(backup_filepath, 'rt', encoding='utf-8') as f:
+                old_data = f.readlines()
+        except FileNotFoundError:
+            old_data = []
+
+        # 新しいデータをバックアップデータに追加する
+        old_data = new_data + old_data
+
+        # 最大50個に削る
+        old_data.reverse()
+        old_data = iter(old_data)
+        num_of_separator = 0
+        backup_data = []
+        while num_of_separator < backup_max:
+            data = next(old_data)
+            backup_data.append(data)
+            if data == '---\n':
+                num_of_separator = num_of_separator + 1
+        backup_data.reverse()
+
+
+        # バックアップファイルにデータを書き込む
+        try:
+            with open(backup_filepath, 'wt', encoding='utf-8') as f:
+                f.writelines(backup_data)
+        except OSError as e:
+            log.error(f'Failed to write backup file: {e}')
+            return
+
+        # バックアップ完了メッセージをログに出力する
+        log.info(f'Backup completed: {backup_filepath}')
+
+        # backup_frequency秒後に再度バックアップを実行する
+        self.master.after(self.backup_frequency, self.backup)
+
+    def autosave(self):
+        '''
+        定期的にファイルを保存する
+        '''
+        if not self.do_autosave:
+            return
+        if not self.filepath:
+            return
+        if self.file_over_write_save():
+            log.info(f'Autosave completed: {self.filepath}')
+        else:
+            log.error(f'Failed Autosave: {self.filepath}')
+        self.master.after(self.autosave_frequency, self.autosave)
+
+    def popup(self, e=None):
+        e.widget.mark_set(INSERT, CURRENT)
+        self.menu_edit.post(e.x_root,e.y_root)
 
 class SettingWindow(Toplevel):
     '''
     設定ウィンドウに関する設定
     '''
-    def __init__(self, title="CastellaEditor - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, e=None, title="SoroEditor - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+        log.info('Open SettingWindow')
         # 設定ファイルの読み込み
-        with open(r'.\settings.yaml', mode='rt', encoding='utf-8') as f:
+        with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
             self.settings = yaml.safe_load(f)
         number_of_columns = self.settings['columns']['number']
         percentage_of_columns = self.settings['columns']['percentage']
@@ -1018,6 +1267,11 @@ class SettingWindow(Toplevel):
         self.wrap = self.settings['wrap']
         display_line_number = self.settings['display_line_number']
         selection_line_highlight = self.settings['selection_line_highlight']
+        self.newwindow_geometry = self.settings['geometry']
+        autosave = self.settings['autosave']
+        self.autosave_frequency = self.settings['autosave_frequency']
+        backup = self.settings['backup']
+        self.backup_frequency = self.settings['backup_frequency']
 
         self.statusbar_elements_dict_converted = {}
         for i in range(6):
@@ -1026,13 +1280,13 @@ class SettingWindow(Toplevel):
             while len(self.statusbar_elements_dict_converted[i]) < 4:
                 self.statusbar_elements_dict_converted[i].append('')
 
-        self.tv = None
+        self.font_treeview = None
 
         under = Frame(self)
         under.pack(side=BOTTOM, fill=X, pady=10)
         Button(under, text='キャンセル', command=self.destroy).pack(side=RIGHT, padx=10)
         Button(under, text='OK', command=lambda:self.save(close=True)).pack(side=RIGHT, padx=10)
-        Button(under, text='適用', command=lambda:self.save()).pack(side=RIGHT, padx=10)
+        Button(under, text='適用', command=lambda:self.save(close=False)).pack(side=RIGHT, padx=10)
 
         f = Labelframe(self, text='設定')
         f.pack(fill=BOTH, expand=True, padx=5, pady=5)
@@ -1041,7 +1295,6 @@ class SettingWindow(Toplevel):
 
         # 以下、設定項目
         f1 = Frame(nt, padding=5)
-        nt.add(f1, padding=5, text='    列    ')
 
         ## 列について
         Label(f1, text='この設定は、新規プロジェクトのデフォルト設定です。'+
@@ -1053,7 +1306,7 @@ class SettingWindow(Toplevel):
         ### 列数
         Label(lf1, text='列数: ').grid(row=0, column=0, columnspan=2, sticky=E)
         lf1.grid_columnconfigure(2, weight=1)
-        self.setting_number_of_columns = Spinbox(lf1, from_=1, to=10,)
+        self.setting_number_of_columns = Spinbox(lf1, from_=1, to=10)
         self.setting_number_of_columns.insert(0, number_of_columns)
         self.setting_number_of_columns.grid(row=0, column=2, columnspan=1, padx=5, pady=5)
 
@@ -1099,7 +1352,6 @@ class SettingWindow(Toplevel):
 
         # タブ - 表示
         f2 = Frame(nt, padding=5)
-        nt.add(f2, padding=5, text='   表示   ')
         lf2 = Labelframe(f2, text='フォント', padding=5)
         lf2.pack(fill=X)
 
@@ -1130,20 +1382,6 @@ class SettingWindow(Toplevel):
         self.setting_wrap_menu.pack(anchor=W)
         lf2_3.pack(side=LEFT)
 
-        ## テーマ
-        lf3 = Labelframe(f2, text='テーマ', padding=5)
-        lf3.pack(fill=X)
-
-        theme_names = []
-        light_theme_names = [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'light']
-        dark_theme_names = [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'dark']
-        theme_names.extend(light_theme_names)
-        theme_names.append('------')
-        theme_names.extend(dark_theme_names)
-        self.setting_theme = StringVar()
-        self.setting_theme_menu = OptionMenu(lf3, self.setting_theme, self.themename, *theme_names)
-        self.setting_theme_menu.grid(row=0, column=0, pady=5)
-
         ##その他
         lf4 = Labelframe(f2, text='その他', padding=5)
         lf4.pack(fill=X)
@@ -1155,12 +1393,28 @@ class SettingWindow(Toplevel):
         self.setting_selection_line_highlight = BooleanVar()
         self.setting_selection_line_highlight.set(selection_line_highlight)
         Checkbutton(lf4, text='選択行の強調', variable=self.setting_selection_line_highlight, bootstyle="round-toggle", padding=5).pack(anchor=W)
+        ### 起動サイズ
+        Label(lf4, text='サイズ: ').pack(side=LEFT)
+        geometry_list = ['Full Screen', '960x540', '1600x900', '1920x1080', '1200x800', '1800x1200', '800x500', '1600x1000']
+        self.setting_geometry = StringVar()
+        self.setting_geometry_menu = OptionMenu(lf4, self.setting_geometry, self.newwindow_geometry, *geometry_list)
+        self.setting_geometry_menu.pack(side=LEFT)
+        ### テーマ
+        Label(lf4, text='  テーマ: ').pack(side=LEFT)
+        theme_names = []
+        light_theme_names = [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'light']
+        dark_theme_names = [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'dark']
+        theme_names.extend(light_theme_names)
+        theme_names.append('------')
+        theme_names.extend(dark_theme_names)
+        self.setting_theme = StringVar()
+        self.setting_theme_menu = OptionMenu(lf4, self.setting_theme, self.themename, *theme_names)
+        self.setting_theme_menu.pack(side=LEFT)
 
         # タブ - ステータスバー
         f3 = Frame(nt, padding=5)
         for i in range(4):
             f3.grid_columnconfigure(i+1, weight=1)
-        nt.add(f3, padding=5, text='ツールバー・ステータスバー')
         statusbar_elements=[None, '文字数カウンター - 1列目', '文字数カウンター - 2列目',
                             '文字数カウンター - 3列目', '文字数カウンター - 4列目',
                             '文字数カウンター - 5列目', '文字数カウンター - 6列目',
@@ -1173,6 +1427,7 @@ class SettingWindow(Toplevel):
                             '行数カウンター - 9列目', '行数カウンター - 10列目',
                             'カーソルの現在位置', 'ショートカットキー1',
                             'ショートカットキー2', 'ショートカットキー3',
+                            '各機能情報', '顔文字',
                             'ボタン - ファイルを開く', 'ボタン - 上書き保存',
                             'ボタン - 名前をつけて保存', 'ステータスバー初期メッセージ']
         self.setting_statusbar_elements_dict = {0: {'var': [], 'menu': []}, 1: {'var': [], 'menu': []}, 2: {'var': [], 'menu': []}, 3: {'var': [], 'menu': []}, 4: {'var': [], 'menu': []}, 5: {'var': [], 'menu': []}}
@@ -1210,6 +1465,53 @@ class SettingWindow(Toplevel):
                 self.setting_statusbar_elements_dict[0]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[0]['var'][k], self.statusbar_elements_dict_converted[0][k], *statusbar_elements))
                 self.setting_statusbar_elements_dict[0]['menu'][k].grid(row=12, column=k, padx=5, pady=5, sticky=W+E)
 
+        # タブ - 機能
+        f4 = Frame(nt, padding=5)
+        ## 自動保存機能
+        lf5 = Labelframe(f4, text='自動保存機能', padding=5)
+        lf5.pack(fill=X)
+        explain_autosave = '''
+自動保存機能は、編集中のファイルをバックグラウンドで自動保存する機能です
+ファイルを一度も保存していない場合（画面上部のタイトルバーに無題と表示されている場合）
+機能しないので注意してください
+'''
+        Label(lf5, text=explain_autosave).pack(anchor=W)
+        self.autosave = BooleanVar()
+        self.autosave.set(autosave)
+        Checkbutton(lf5, text='*自動保存機能', variable=self.autosave, bootstyle="round-toggle", padding=5).pack(anchor=W)
+        ### 自動保存頻度
+        Label(lf5, text='\n*自動保存頻度（分）').pack(anchor=W)
+        self.setting_autosave_frequency = Spinbox(lf5, from_=1, to=60, wrap=True)
+        self.setting_autosave_frequency.insert(0, self.autosave_frequency/60000)
+        self.setting_autosave_frequency.pack(anchor=W)
+
+        ## バックアップ機能
+        lf6 = Labelframe(f4, padding=5, text='バックアップ機能')
+        lf6.pack(fill=X)
+        explain_backup = '''
+バックアップ機能は、編集中のファイルのデータをバックアップファイルに自動保存する機能です
+backup-{ファイル名}.$epに保存されます
+ファイルを保存していない場合でも、実行ファイルと同じディレクトリのbackup.$epに保存されます
+メモ帳などのテキストエディタでバックアップファイルとプロジェクトファイルを開き、
+バックアップファイルにある[---]の間一つををコピーしてプロジェクトファイルに上書きする事でデータを再利用できます
+'''
+        Label(lf6, text=explain_backup).pack(anchor=W)
+        self.backup = BooleanVar()
+        self.backup.set(backup)
+        Checkbutton(lf6, text='*バックアップ機能', variable=self.backup, bootstyle="round-toggle", padding=5).pack(anchor=W)
+        ### バックアップ頻度
+        Label(lf6, text='\n*バックアップ頻度（分）').pack(anchor=W)
+        self.setting_backup_frequency = Spinbox(lf6, from_=1, to=60, wrap=True)
+        self.setting_backup_frequency.insert(0, self.backup_frequency/60000)
+        self.setting_backup_frequency.pack(anchor=W)
+
+
+        nt.add(f2, padding=5, text='            表示            ')
+        nt.add(f4, padding=5, text='            機能            ')
+        nt.add(f1, padding=5, text='             列             ')
+        nt.add(f3, padding=5, text='  *ツールバー・ステータスバー  ')
+
+
         # キーバインド
         self.setting_number_of_columns.bind('<<Increment>>', lambda e:reload_setting_column_percentage(e, 'up'))
         self.setting_number_of_columns.bind('<<Decrement>>', lambda e:reload_setting_column_percentage(e, 'down'))
@@ -1222,20 +1524,50 @@ class SettingWindow(Toplevel):
 
     # 設定編集GUIのOKや適用を押した際の動作
     def save(self, e=None, close=False):
-        print('save_settings')
-        number_of_columns = int(self.setting_number_of_columns.get())
+
+        # 設定値をGUIから取得
+        try:
+            number_of_columns = int(self.setting_number_of_columns.get())
+        except ValueError as e:
+            log.exception(f'invalid value in number of columns: {e}')
+            number_of_columns = self.settings['columns']['number']
         percentage_of_columns = []
         for i in range(len(self.setting_column_percentage)):
-            percentage_of_columns.append(int(self.setting_column_percentage[i].get()))
+            try:
+                percentage_of_columns.append(int(self.setting_column_percentage[i].get()))
+            except ValueError as e:
+                log.exception(f'invalid value in percentage of columns: {e}')
+                percentage_of_columns.append(self.settings['columns']['percentage'][i])
         for _ in range(10-len(percentage_of_columns)):
             percentage_of_columns.append(0)
-        font_family = self.tv.selection()[0]
-        font_size = int(self.setting_font_size.get())
-        between_lines = int(self.setting_between_lines.get())
+        font_family = self.font_treeview.selection()[0]
+        try:
+            font_size = int(self.setting_font_size.get())
+        except ValueError as e:
+            log.exception(f'invalid value in font_size: {e}')
+            font_size = self.settings['font']['size']
+        try:
+            between_lines = int(self.setting_between_lines.get())
+        except ValueError as e:
+            log.exception(f'invalid value in between lines: {e}')
+            between_lines = self.setitngs['between_lines']
         wrap = self.setting_wrap.get()
         themename = self.setting_theme.get()
         display_line_number = self.setting_display_line_number.get()
         selection_line_highlight = self.setting_selection_line_highlight.get()
+        geometry = self.setting_geometry.get()
+        autosave = self.autosave.get()
+        try:
+            autosave_frequency = int(float(self.setting_autosave_frequency.get())*60000)
+        except ValueError as e:
+            log.exception(f'invalid value in autosave frequency: {e}')
+            autosave_frequency = self.settings['autosave_frequency']
+        backup = self.backup.get()
+        try:
+            backup_frequency = int(float(self.setting_backup_frequency.get())*60000)
+        except ValueError as e:
+            log.exception(f'invalid value in backup frequency: {e}')
+            backup_frequency = self.settings['backup_frequency']
         if themename == '------': themename = self.themename
         statusbar_method = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
         for i in range(24):
@@ -1258,6 +1590,8 @@ class SettingWindow(Toplevel):
             elif i < 24:
                 e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[0]['var'][k].get())
                 if e: statusbar_method[0].append(e)
+
+        # 設定を辞書に格納する
         self.settings['columns']['number'] = number_of_columns
         self.settings['columns']['percentage'] = percentage_of_columns
         self.settings['font']['family'] = font_family
@@ -1268,25 +1602,56 @@ class SettingWindow(Toplevel):
         self.settings['display_line_number'] = display_line_number
         self.settings['statusbar_element_settings'] = statusbar_method
         self.settings['selection_line_highlight'] = selection_line_highlight
+        self.settings['geometry'] = geometry
+        self.settings['autosave'] = autosave
+        self.settings['autosave_frequency'] = autosave_frequency
+        self.settings['backup'] = backup
+        self.settings['backup_frequency'] = backup_frequency
         self.settings['version'] = __version__
-        app.font.config(family=font_family, size=font_size)
-        app.between_lines = between_lines
-        app.windowstyle.theme_use(themename)
-        # app.statusbar
-        app.selection_line_highlight = selection_line_highlight
-        with open(r'.\settings.yaml', mode='wt', encoding='utf-8') as f:
-            yaml.dump(self.settings, f, allow_unicode=True)
-        MessageDialog(  '一部の設定（*アスタリスク付きの項目）の反映にはアプリの再起動が必要です\n'+
+
+        # 一部設定は再起動を待たずプログラムに反映する
+        try:
+            app.font.config(family=font_family, size=font_size)
+            app.between_lines = between_lines
+            app.windowstyle.theme_use(themename)
+            app.selection_line_highlight = selection_line_highlight
+            if geometry == 'Full Screen':
+                app.master.state('zoomed')
+            else:
+                app.master.state('normal')
+                app.master.geometry(geometry)
+            app.do_autosave = autosave
+            app.autosave_frequency = autosave_frequency
+            app.do_backup = backup
+            app.backup_frequency = backup_frequency
+            for w in app.textboxes:
+                w.config(wrap=wrap, spacing2=between_lines)
+            app.make_text_editor()
+        except tkinter.TclError as e:
+            log.error(f'Failed to write to the settigs dict: {e}')
+
+        # 設定ファイルに更新された辞書を保存する
+        try:
+            with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
+                yaml.dump(self.settings, f, allow_unicode=True)
+        except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
+            error_type = type(e).__name__
+            error_message = str(e)
+            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+        else:
+            log.info('Update setting file')
+            MessageDialog('一部の設定（*アスタリスク付きの項目）の反映にはアプリの再起動が必要です\n'+
                         '設定をすぐに反映したい場合、いったんアプリを終了して再起動してください',
-                        'CastellaEditor - 設定',
-                        ['OK']).show()
-        if close: self.destroy()
+                        'SoroEditor - 設定',
+                        ['OK']).show(app.md_position)
+        if close:
+            self.close()
 
     # フォントファミリー選択ツリービュー
     def setting_font_family_treeview(self, master):
         f1 = Frame(master)
         f1.pack(fill=BOTH, expand=YES)
-        self.tv = Treeview(f1, height=10, show=[], columns=[0])
+        self.font_treeview = Treeview(f1, height=10, show=[], columns=[0])
         # 使用可能なフォントを取得
         families = set(font.families())
         # 縦書きフォントを除外
@@ -1297,16 +1662,16 @@ class SettingWindow(Toplevel):
         families = sorted(families)
         # ツリービューに挿入
         for f in families:
-            self.tv.insert('', iid=f, index=END, tags=[f], values=[f])
-            self.tv.tag_configure(f, font=(f, 10))
+            self.font_treeview.insert('', iid=f, index=END, tags=[f], values=[f])
+            self.font_treeview.tag_configure(f, font=(f, 10))
         # 初期位置を設定
-        self.tv.selection_set(self.font_family)
-        self.tv.see(self.font_family)
+        self.font_treeview.selection_set(self.font_family)
+        self.font_treeview.see(self.font_family)
         # スクロールバーを設定
-        vbar = Scrollbar(f1, command=self.tv.yview, orient=VERTICAL, bootstyle='rounded')
+        vbar = Scrollbar(f1, command=self.font_treeview.yview, orient=VERTICAL, bootstyle='rounded')
         vbar.pack(side=RIGHT, fill=Y)
-        self.tv.configure(yscrollcommand=vbar.set)
-        return self.tv
+        self.font_treeview.configure(yscrollcommand=vbar.set)
+        return self.font_treeview
 
     def convert_statusbar_elements(self, val: str):
         l =[['文字数カウンター - 1列目', 'letter_count_1'],
@@ -1333,6 +1698,8 @@ class SettingWindow(Toplevel):
             ['ショートカットキー1', 'hotkeys1'],
             ['ショートカットキー2', 'hotkeys2'],
             ['ショートカットキー3', 'hotkeys3'],
+            ['各機能情報', 'infomation'],
+            ['顔文字', 'kaomoji'],
             ['ボタン - ファイルを開く', 'toolbutton_open'],
             ['ボタン - 上書き保存', 'toolbutton_over_write_save'],
             ['ボタン - 名前をつけて保存', 'toolbutton_save_as'],
@@ -1342,20 +1709,27 @@ class SettingWindow(Toplevel):
             elif val == x[1]: return x[0]
         return ''
 
+    def close(self):
+        log.info('Closed SettingWindow')
+        self.destroy()
+
 class ProjectFileSettingWindow(Toplevel):
-    def __init__(self, title="CastellaEditor - プロジェクト設定", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="SoroEditor - プロジェクト設定", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+        log.info('Open ProjectFileSettingWindow')
         if app.get_current_data() != app.data:
             self.withdraw()
             mg = MessageDialog('プロジェクトファイル設定を変更する前にプロジェクトファイルを保存します',
-                        'CastellaEditor - プロジェクトファイル設定',
+                        'SoroEditor - プロジェクトファイル設定',
                         ['OK:success', 'キャンセル:secondary'],)
-            mg.show()
-            print(mg.result)
+            mg.show(app.md_position)
             if mg.result == 'OK':
                 x = app.file_over_write_save()
-                if x: self.deiconify()
+                if x:
+                    self.deiconify()
                 else:
                     self.destroy()
                     return
@@ -1414,23 +1788,25 @@ class ProjectFileSettingWindow(Toplevel):
             self.sb_p[i].grid(row=i+2, column=2, padx=5, pady=5)
 
     def save(self, e=None, close=False):
-        print('\nsave')
         number_of_columns = int(self.number_of_columns.get())
         percentage_of_columns = []
         for i in range(len(self.colmun_percentage)):
             percentage_of_columns.append(int(self.colmun_percentage[i].get())/100)
         for _ in range(10-len(percentage_of_columns)):
             percentage_of_columns.append(0)
-        print(number_of_columns)
-        print(percentage_of_columns)
         app.number_of_columns = number_of_columns
         app.column_percentage = percentage_of_columns
         app.make_text_editor()
-        if close: self.destroy()
+        if close:
+            self.close()
+
+    def close(self):
+        log.info('Close ProjectFileSettingWindow')
+        self.destroy()
 
 
 class ThirdPartyNoticesWindow(Toplevel):
-    def __init__(self, title="CastellaEditor - ライセンス情報", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="SoroEditor - ライセンス情報", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
         text = __thirdpartynotices__
@@ -1455,7 +1831,6 @@ class ThirdPartyNoticesWindow(Toplevel):
             widget.tag_add(m.groups()[1], index+'+4lines', index+'+4lines lineend')
             command = open_url(m.groups()[1])
             widget.tag_bind(m.groups()[1], '<Button-1>', command)
-        print(widget.tag_names())
         widget.winfo_children()[0].config(font=font.Font(family=family, size=12), spacing2=10, state=DISABLED)
         widget.pack(fill=BOTH, expand=True)
 
@@ -1467,11 +1842,99 @@ class ThirdPartyNoticesWindow(Toplevel):
 
 
 class HelpWindow(Toplevel):
-    def __init__(self, title="ヘルプ", iconphoto='', size=(600, 500), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="SoroEditor - ヘルプ", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
         f = Frame(self, padding=5)
         f.pack(fill=BOTH, expand=True)
+        t = Text(f, font=app.font)
+
+        font_title = app.font.copy()
+        font_title.config(size=15)
+        font_h1 = app.font.copy()
+        font_h1.config(size=13)
+        font_text = app.font.copy()
+        font_text.config(size=10)
+
+        def open_url(url):
+            def innner(_):
+                webbrowser.open_new(url)
+            return innner
+
+        t.tag_config('title', font=font_title, justify=CENTER,
+                    spacing1=10, spacing3=10)
+        t.tag_config('h1', font=font_h1, underline=True,
+                    spacing1=20, spacing3=15)
+        t.tag_config('text', font=font_text)
+        t.tag_config('github', underline=True)
+        t.tag_config('github_issue', underline=True)
+        t.tag_config('mail', underline=True)
+        github = open_url('https://github.com/joppincal/SoroEditor')
+        github_issue = open_url('https://github.com/joppincal/SoroEditor/issue')
+        mail = open_url('mailto://Joppincal@mailo.com?subject=SoroEditorについて')
+        t.tag_bind('github', '<Button-1>', github)
+        t.tag_bind('github_issue', '<Button-1>', github_issue)
+        t.tag_bind('mail', '<Button-1>', mail)
+
+        t.insert(END, 'そろエディタ\n', 'title')
+        t.insert(END, '概要\n', 'h1')
+        t.insert(END,
+'''そろエディタは「並列テキストエディタ」です
+複数列が揃って並び、それぞれテキストエディタとして編集できます
+スクロールを同期できます
+同様の内容は、
+ヘルプ(H)→ヘルプを表示(H) F1や
+ヘルプ(H)→初回起動メッセージを表示(F)
+もしくは\n''', 'text')
+        t.insert(END, 'https://github.com/joppincal/SoroEditor\n', ('text', 'github'))
+        t.insert(END, 'で確認できます\n', 'text')
+        t.insert(END, '設定可能項目\n', 'h1')
+        t.insert(END,
+'''設定(S)	から
+・列数・列幅
+・フォント（ファミリー・サイズ）
+・表示テーマ
+・画面端の折り返し（なし 文字で折り返し 単語で折り返し（英語向け））
+・ステータスバー（ウィンドウ下部の、様々な情報が記述されている場所）
+・ツールバー（ウィンドウ上部のボタンが配置された場所）
+・編集中の行の強調表示（デフォルトでは下線）
+・行番号
+・起動時のウィンドウサイズ
+
+*列数・列幅に関しては、ファイル(F)→プロジェクト設定(F)	から
+プロジェクトファイルごとに設定できます\n''', 'text')
+        t.insert(END, 'ホットキー\n', 'h1')
+        t.insert(END,
+'''Ctrl+O:           ファイルを開く
+Ctrl+R:           前回使用したファイルを開く
+Ctrl+S:           上書き保存
+Ctrl+Shift+S:     名前をつけて保存
+Ctrl+Z:           取り消し
+Ctrl+Shift+Z:     取り消しを戻す
+Ctrl+Enter:       1行追加（下）
+Ctrl+Shift+Enter: 1行追加（上）
+Ctrl+L:           1行選択
+Ctrl+Q, Alt+<:    左の列に移動
+Ctrl+W, Alt+>:    右の列に移動\n''', 'text')
+        t.insert(END, 'プロジェクトファイル\n', 'h1')
+        t.insert(END,
+'''プロジェクトファイルはYAML形式のファイルの拡張子を*.sepに変更したものです
+一般のテキストエディタでも閲覧・編集が可能です\n''', 'text')
+        t.insert(END, '設定ファイル\n', 'h1')
+        t.insert(END,
+'''設定ファイルはYAML形式です（setting.yaml）
+一般のテキストエディタでも閲覧・編集が可能です
+実行ファイル（SoroEditor.exe または SoroEditor.py）と
+同じフォルダに置いてください\n''', 'text')
+        t.insert(END, '連絡先\n', 'h1')
+        t.insert(END, '不具合報告・要望などは、', 'text')
+        t.insert(END, 'Joppincal@mailo.com\n', ('text', 'mail'))
+        t.insert(END, 'もしくは', 'text')
+        t.insert(END, 'Githubのissue', ('text', 'github_issue'))
+        t.insert(END, 'にて')
+
+        t.config(state=DISABLED)
+        t.pack(fill=BOTH, expand=True)
 
         # ウィンドウの設定
         self.grab_set()
@@ -1481,7 +1944,7 @@ class HelpWindow(Toplevel):
 
 
 class AboutWindow(Toplevel):
-    def __init__(self, title="CastellaEditorについて", iconphoto='', size=(600, 500), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="SoroEditorについて", iconphoto='', size=(600, 500), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
         frame = Frame(self, padding=5)
@@ -1491,7 +1954,7 @@ class AboutWindow(Toplevel):
         main.tag_config('title', justify=CENTER, spacing2=10, font=font.Font(size=15, weight='bold'))
         main.tag_config('text', justify=CENTER, spacing2=10, font=font.Font(size=12, weight='normal'))
         main.tag_config('link', justify=CENTER, spacing2=10, font=font.Font(size=12, weight='normal', underline=True))
-        github = 'https://github.com/joppincal/CastellaEditor'
+        github = 'https://github.com/joppincal/SoroEditor'
         main.tag_config('github')
         main.tag_bind('github', '<Button-1>', lambda e: webbrowser.open_new(github))
         homepage = ''
@@ -1499,7 +1962,7 @@ class AboutWindow(Toplevel):
         main.tag_bind('homepage', '<Button-1>', lambda e: webbrowser.open_new(homepage))
 
         main.insert(END, 'ここにアイコンを表示\n')
-        main.insert(END, 'カステラエディタ\nCastellaEditor\n', 'title')
+        main.insert(END, 'そろエディタ\nSoroEditor\n', 'title')
         main.insert(END, f'\nバージョン: {__version__}\n', 'text')
         main.insert(END, f'プロジェクトファイルバージョン: {__projversion__}\n', 'text')
         main.insert(END, '\nGithub: ', 'text')
@@ -1517,7 +1980,284 @@ class AboutWindow(Toplevel):
         app.wait_window(self)
 
 
+class ExportWindow(Toplevel):
+
+    def __init__(self, title="SoroEditor - エクスポート", iconphoto='', size=(1000, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        log.info('Open ExportWindow')
+
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+        self.current_data = app.get_current_data()
+
+        f = Frame(self, padding=10)
+        f.pack(fill=BOTH, expand=True)
+
+        self.f1 = Frame(f, padding=5)
+        Label(self.f1, text='ファイル形式').pack(side=LEFT, padx=2)
+        self.file_format = StringVar(value='CSV')
+        file_formats = ['CSV', 'TSV', 'テキスト', 'テキスト(Shift-JIS)']
+        OptionMenu(self.f1, self.file_format, self.file_format.get(), *file_formats, command=self.make_setting_frame).pack(side=LEFT, padx=2)
+        self.shift_jis_alert = Label(self.f1)
+        self.shift_jis_alert.pack(side=LEFT, padx=10)
+        self.f1.pack(fill=X)
+
+        f2 = Frame(f, padding=(5, 5))
+        Button(f2, text='キャンセル', command=self.destroy, bootstyle=SECONDARY).pack(side=RIGHT, padx=2)
+        Button(f2, text='出力', command=self.export).pack(side=RIGHT, padx=2)
+        Separator(f2).pack(fill=X)
+        f2.pack(side=BOTTOM, fill=X, anchor=S)
+
+        self.lf1 = Labelframe(f, text='設定', padding=5)
+        self.lf1.pack(fill=BOTH, expand=True)
+        self.lf2 = Labelframe(self.lf1, text='出力する列', padding=5)
+        self.lf2.place(relx=0.0, rely=0.0, relheight=1.0, relwidth=0.3)
+        self.lf3 = Labelframe(self.lf1, text='詳細', padding=5)
+        self.lf3.place(relx=0.3, rely=0.0, relheight=1.0, relwidth=0.7)
+        self.make_setting_frame(self.file_format.get())
+
+        # ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
+
+    def make_setting_frame(self, file_format:str):
+        # リセット
+        for w in self.lf2.winfo_children():
+            w.destroy()
+        for w in self.lf3.winfo_children():
+            w.destroy()
+
+        # 出力する列
+        ## 列のタイトルを取得、空欄の場合デフォルト設定
+        line_names = [self.current_data[i]['title']
+                        if self.current_data[i]['title']
+                        else f'列{i+1}'
+                        for i in range(app.number_of_columns)]
+        ## CSV/TSV/PDFの場合の設定画面
+        if file_format in ['CSV', 'TSV', 'PDF']:
+            self.line_checkbuttons_variables = [BooleanVar(value=True)
+                                            for _ in range(len(line_names))]
+            line_checkbuttons = [Checkbutton(
+                                    self.lf2, text=line_names[i], padding=10,
+                                    variable=self.line_checkbuttons_variables[i],
+                                    bootstyle='round-toggle')
+                                    for i in range(len(line_names))]
+            for w in line_checkbuttons:
+                w.pack(anchor=W)
+        ## テキスト/テキスト(Shift-JIS)の場合の設定画面
+        elif file_format in ['テキスト', 'テキスト(Shift-JIS)']:
+            self.line_radiobuttons_variable = IntVar(value=0)
+            line_radiobuttons = [Radiobutton(
+                                    self.lf2, text=line_names[i], padding=10,
+                                    variable=self.line_radiobuttons_variable,
+                                    value=i)
+                                    for i in range(len(line_names))]
+            for w in line_radiobuttons:
+                w.pack(anchor=W)
+
+        # 詳細
+        # テキスト(Shift-JIS)の場合、データの一部が再現できない場合がある事を記述する
+
+        if self.file_format.get() == 'テキスト(Shift-JIS)':
+            self.shift_jis_alert.config(text='*Shift-JISで表現できない一部のUnicode文字は「?」に置き換えられます')
+        else:
+            self.shift_jis_alert.config(text='')
+
+        def filepath_label_change(widget:Label, newfilepath=''):
+            widget.config(text=newfilepath)
+
+        def get_new_filepath(defaultextension, filetype, widget):
+
+            def inner(defaultextension=defaultextension, filetype=filetype, widget=widget):
+                if app.filepath:
+                    initialdir = os.path.dirname(app.filepath)
+                    initialfile = os.path.splitext(os.path.basename(app.filepath))[0] + filetype
+                else:
+                    initialdir = sys.argv[0]
+                    initialfile = 'export' + filetype
+                if filetype == '.csv':
+                    filetype = (['CSVファイル', '*.csv'],
+                                ['すべてのファイル', '*.*'])
+                elif filetype == '.tsv':
+                    filetype = (['TSVファイル', '*.tsv'],
+                                ['すべてのファイル', '*.*'])
+                elif filetype == '.pdf':
+                    filetype = (['PDFファイル', '*.pdf'],
+                                ['すべてのファイル', '*.*'])
+                elif filetype == '.txt':
+                    filetype = (['テキストファイル', '*.txt'],
+                                ['すべてのファイル', '*.*'])
+                newfilepath = filedialog.asksaveasfilename(
+                                            defaultextension=defaultextension,
+                                            filetypes=filetype,
+                                            initialdir=initialdir,
+                                            initialfile=initialfile)
+                if newfilepath:
+                    # ドライブ文字を大文字にする
+                    drive, tail = os.path.splitdrive(newfilepath)
+                    drive = drive.upper()
+                    newfilepath = os.path.join(drive, tail)
+                    filepath_label_change(widget, newfilepath)
+            return inner
+
+        self.include_title_in_output = BooleanVar(value=True)
+        Checkbutton(self.lf3, padding=10,
+                    text='タイトルを含めて出力する',
+                    variable=self.include_title_in_output,
+                    bootstyle='round-toggle').grid(column=0, columnspan=2, row=0, sticky=W, padx=10, pady=10)
+
+        # 保存先の設定
+        if file_format == 'CSV':
+            extension = '.csv'
+        elif file_format == 'TSV':
+            extension = '.tsv'
+        elif file_format == 'PDF':
+            extension = '.pdf'
+        elif file_format in ['テキスト', 'テキスト(Shift-JIS)']:
+            extension = '.txt'
+
+        if app.filepath:
+            self.filepath = StringVar(value=os.path.dirname(app.filepath) + '/' + os.path.splitext(os.path.basename(app.filepath))[0] + extension)
+        else:
+            self.filepath = StringVar(value=os.path.join(os.path.dirname(sys.argv[0]), 'export'+extension))
+
+        Label(self.lf3, text='保存先', padding=10).grid(column=0, row=2, sticky=W, padx=10, pady=5)
+        filepath_label = Label(self.lf3)
+        filepath_label.grid(column=1, columnspan=3, row=3, sticky=W, padx=10, pady=5)
+        filepath_label_change(filepath_label, self.filepath.get())
+        Button(self.lf3, text='変更', command=get_new_filepath(extension, extension, filepath_label)).grid(column=1, row=2, sticky=W, padx=10, pady=5)
+
+    def export(self):
+        # データを現在の表示状態に更新する
+        self.data = [(self.current_data[i]['title'], self.current_data[i]['text'])
+                        for i in range(app.number_of_columns)]
+
+        # ファイルフォーマットがCSVまたはTSVの場合はCSV形式で出力する
+        if self.file_format.get() in ['CSV', 'TSV']:
+            data = self.export_csv()
+
+        # ファイルフォーマットがテキストまたはテキスト(Shift-JIS)の場合はテキスト形式で出力する
+        if self.file_format.get() in ['テキスト', 'テキスト(Shift-JIS)']:
+            data = self.export_text()
+
+        # 出力データをファイルに書き込む
+        if self.write_file(data):
+            messagedialog = MessageDialog(
+                f'「{self.filepath.get()}」を作成しました',
+                'SoroEditor - エクスポート',
+                ['OK:primary'])
+        else:
+            messagedialog = MessageDialog(
+                '出力に失敗しました。同名ファイルを他のソフトで開いていないか確認してください',
+                'SoroEditor - エクスポート',
+                ['OK:primary']
+            )
+        messagedialog.show()
+
+    def export_csv(self) -> str:
+        # 出力するデータを取得する
+        data = self.data
+        # データの列数を取得する
+        data_length = len(data)
+
+        output_data = ''
+
+        # 出力するデータをチェックボックスで選択された行のみに絞り込む
+        data = [data[i] for i in range(data_length)
+                if self.line_checkbuttons_variables[i].get()]
+        # 絞り込んだデータの列数を取得する
+        data_length = len(data)
+
+        # ファイルフォーマットに応じて区切り文字を設定する
+        separator = {'CSV': ',', 'TSV': '\t'}.get(self.file_format.get())
+
+        # ヘッダー行を追加する
+        if self.include_title_in_output.get():
+            # ヘッダー行のデータを取得する
+            header = [data[i][0] for i in range(data_length)]
+            # ヘッダー行を出力データに追加する
+            output_data += f'{separator}'.join(header) + '\n'
+
+        # データ行を追加する
+        # 最大の行数を計算する
+        max_row_length = max([len(text.split('\n')) for title, text in data])
+
+        for i in range(max_row_length):
+            # 1つの行のデータを表すリストを初期化
+            row_data = []
+            for title, text in data:
+                # 1つのセルのデータを表す文字列を取得する
+                cell_data = ''
+                text_rows = text.split('\n')
+                if i < len(text_rows):
+                    cell_data = text_rows[i]
+                row_data.append(cell_data)
+                # 1つの行のデータを出力データに追加する
+            output_data += f'{separator}'.join(row_data) + '\n'
+
+        # 出力するデータを返す
+        return output_data
+
+    def export_text(self) -> str:
+        data = self.data
+
+        output_data = ''
+
+        # 設定が有効の場合、タイトル行を出力
+        if self.include_title_in_output.get():
+            # ラジオボタンで選択された行のタイトルを取得し、改行を追加して出力する
+            output_data += data[self.line_radiobuttons_variable.get()][0] + '\n'
+
+        # ラジオボタンで選択された行のテキストを取得して出力する
+        output_data += data[self.line_radiobuttons_variable.get()][1] + '\n'
+
+        # 出力するデータを返す
+        return output_data
+
+    def write_file(self, data):
+        # すでに同名ファイルが存在するか確認し、存在する場合上書きするか確認
+        if os.path.exists(self.filepath.get()):
+            messagedialog = MessageDialog(
+                f'ファイル「{self.filepath.get()}」はすでに存在します',
+                'SoroEditor - エクスポート',
+                ['上書き:primary', 'キャンセル'])
+            messagedialog.show()
+            if messagedialog.result == 'キャンセル':
+                return False
+        # エンコード方法を設定する
+        if self.file_format.get() == 'テキスト(Shift-JIS)':
+            encodeing = 'cp932'
+        elif self.file_format.get() in ['CSV', 'TSV']:
+            encodeing = 'utf-8-sig'
+        else:
+            encodeing = 'utf-8'
+        # ファイルを作成し、書き込む
+        try:
+            with open(self.filepath.get(), mode='wt', encoding=encodeing, errors='replace') as f:
+                f.write(data)
+        except PermissionError as e:
+            log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
+            return False
+        except Exception as e:
+            log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
+            return False
+        else:
+            log.info(f'Success export {self.file_format.get()}: {self.filepath.get()}')
+            # 書き込みを行い成功した場合Trueを返す
+            return True
+
+    def close(self):
+        log.info('Close ExportWindow')
+        self.destroy()
+
+
 if __name__ == '__main__':
-    root = Window(title='CastellaEditor', minsize=(1200, 800))
+    log_setting()
+    log.info('===Start Application===')
+    root = Window(title='SoroEditor', minsize=(800, 500))
     app = Main(master=root)
     app.mainloop()
+    log.info('===Close Application===')
