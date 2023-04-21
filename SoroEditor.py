@@ -24,7 +24,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.4'
+__version__ = '0.3.5'
 __projversion__ = '0.2.0'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -66,11 +66,11 @@ class Main(Frame):
                         'backup': True,
                         'backup_frequency': 300000,
                         'between_lines': 10,
-                        'columns': {'number': 3, 'percentage': [10, 60, 30]},
+                        'columns': {'number': 3, 'percentage': [15, 55, 30]},
                         'display_line_number': True,
                         'font': {'family': 'nomal', 'size': 12},
                         'geometry': '1600x1000',
-                        'ms_align_the_lines': 100,
+                        'ms_align_the_lines': 50,
                         'recently_files': [],
                         'selection_line_highlight': True,
                         'statusbar_element_settings':
@@ -78,7 +78,7 @@ class Main(Frame):
                             1: ['hotkeys2', 'hotkeys3'],
                             2: ['hotkeys1'],
                             3: ['current_place', 'line_count_1', 'line_count_2', 'line_count_3'],
-                            4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_save_as'],
+                            4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_file_reload'],
                             5: [None]},
                         'themename': '',
                         'version': __version__,
@@ -110,7 +110,7 @@ class Main(Frame):
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         else:
             self.settings = data
-            log.info('Settings loaded successfully')
+            log.info('Success loading settings')
 
         # 設定ファイルから各設定を読み込み
         ## ウィンドウサイズ
@@ -155,7 +155,7 @@ class Main(Frame):
             self.data0[i] = {'text': '', 'title': ''}
         self.data0['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
         self.data0['version'] = __projversion__
-        self.data = self.data0
+        self.data = self.data0.copy()
         self.edit_history = deque([self.data])
         self.undo_history: deque[dict] = deque([])
         self.recently_files: list = self.settings['recently_files']
@@ -171,23 +171,25 @@ class Main(Frame):
         menubar = Menu()
 
         ## メニュバー - ファイル
-        self.menu_file = Menu(menubar, tearoff=False)
+        self.menu_file = Menu(menubar)
 
+        self.menu_file.add_command(label='新規作成(N)', command=self.file_create, accelerator='Ctrl+N', underline=5)
         self.menu_file.add_command(label='ファイルを開く(O)', command=self.file_open, accelerator='Ctrl+O', underline=8)
         self.menu_file.add_command(label='上書き保存(S)', command=self.file_over_write_save, accelerator='Ctrl+S', underline=6)
         self.menu_file.add_command(label='名前をつけて保存(A)', command=self.file_save_as, accelerator='Ctrl+Shift+S', underline=9)
         self.menu_file.add_command(label='エクスポート(E)', command=ExportWindow, accelerator='Ctrl+Shift+E', underline=7)
         self.menu_file.add_command(label='プロジェクト設定(F)', command=ProjectFileSettingWindow, underline=9)
+        self.menu_file.add_command(label='再読込(W)', command=self.make_text_editor, accelerator='F5', underline=4)
 
         ###メニューバー - ファイル - 最近使用したファイル
-        self.menu_file_recently = Menu(self.menu_file, tearoff=False)
+        self.menu_file_recently = Menu(self.menu_file)
 
         try:
-            self.menu_file_recently.add_command(label=self.recently_files[0], command=lambda:self.file_open(file=self.recently_files[0]), accelerator='Ctrl+R')
-            self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
-            self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
-            self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
-            self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+            self.menu_file_recently.add_command(label=self.recently_files[0], command=lambda:self.file_open(file_path_to_open=self.recently_files[0]), accelerator='Ctrl+R')
+            self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file_path_to_open=self.recently_files[1]))
+            self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file_path_to_open=self.recently_files[2]))
+            self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file_path_to_open=self.recently_files[3]))
+            self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file_path_to_open=self.recently_files[4]))
         except IndexError:
             pass
 
@@ -198,7 +200,7 @@ class Main(Frame):
         menubar.add_cascade(label='ファイル(F)', menu=self.menu_file, underline=5)
 
         ## メニューバー - 編集
-        self.menu_edit = Menu(menubar, tearoff=False)
+        self.menu_edit = Menu(menubar)
 
         self.menu_edit.add_command(label='切り取り(T)', command=self.cut, accelerator='Ctrl+X', underline=5)
         self.menu_edit.add_command(label='コピー(C)', command=self.copy, accelerator='Ctrl+C', underline=4)
@@ -209,15 +211,24 @@ class Main(Frame):
         self.menu_edit.add_command(label='取り消しを戻す(R)', command=self.repeat, accelerator='Ctrl+Shift+Z', underline=8)
         menubar.add_cascade(label='編集(E)', menu=self.menu_edit, underline=3)
 
+        ## メニューバー - 検索
+        self.menu_search = Menu(menubar)
+
+        self.menu_search.add_command(label='検索(S)', command=SearchWindow, accelerator='Ctrl+F', underline=3)
+        self.menu_search.add_command(label='置換(R)', command=lambda: SearchWindow('1'), accelerator='Ctrl+Shift+F', underline=3)
+
+        menubar.add_cascade(label='検索(S)', menu=self.menu_search, underline=3)
+
         ## メニューバー - 設定
-        self.menu_setting = Menu(menubar, tearoff=True)
-        self.menu_setting.add_command(label='設定(S)', command=SettingWindow, accelerator='Ctrl+Shift+P', underline=3)
-        menubar.add_cascade(label='設定(S)', menu=self.menu_setting, underline=3)
+        self.menu_option = Menu(menubar)
+        self.menu_option.add_command(label='設定(O)', command=SettingWindow, accelerator='Ctrl+Shift+P', underline=3)
+        self.menu_option.add_command(label='プロジェクト設定(F)', command=ProjectFileSettingWindow, underline=9)
+        menubar.add_cascade(label='設定(O)', menu=self.menu_option, underline=3)
 
         ## メニューバー - ヘルプ
-        self.menu_help = Menu(menubar, tearoff=True)
+        self.menu_help = Menu(menubar)
         self.menu_help.add_command(label='ヘルプを表示(H)', command=HelpWindow, accelerator='F1', underline=7)
-        self.menu_help.add_command(label='初回起動メッセージを表示(F)', command=lambda: self.file_open(file=os.path.join(os.path.dirname(__file__), 'hello.txt')), underline=13)
+        self.menu_help.add_command(label='初回起動メッセージを表示(F)', command=lambda: self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'hello.txt')), underline=13)
         self.menu_help.add_command(label='SoroEditorについて(A)', command=AboutWindow, underline=16)
         self.menu_help.add_command(label='ライセンス情報(L)', command=ThirdPartyNoticesWindow, underline=8)
         menubar.add_cascade(label='ヘルプ(H)', menu=self.menu_help, underline=4)
@@ -233,9 +244,9 @@ class Main(Frame):
         self.f2 = Frame(self.master)
         self.vbar = Scrollbar(self.f2, command=self.vbar_command, style=ROUND, takefocus=False)
 
-        self.columns = []
-        self.entrys = []
-        self.maintexts = []
+        self.columns:list[Frame] = []
+        self.entrys:list[Entry] = []
+        self.maintexts:list[Text] = []
 
         self.make_text_editor()
 
@@ -291,18 +302,13 @@ class Main(Frame):
         ## 顔文字
         self.kaomoji = ('label', choice(['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)']))
         ## ツールボタン
+        self.toolbutton_create = ('button', '新規作成[Ctrl+N]', self.file_create)
         self.toolbutton_open = ('button', 'ファイルを開く[Ctrl+O]', self.file_open)
         self.toolbutton_over_write_save = ('button', '上書き保存[Ctrl+S]', self.file_over_write_save)
         self.toolbutton_save_as = ('button', '名前をつけて保存[Ctrl+Shift+S]', self.file_save_as)
+        self.toolbutton_file_reload = ('button', '再読込[F5]', self.file_reload)
         ## 初期ステータスバーメッセージ
         self.statusbar_message = ('label', 'ステータスバーの表示項目はメニューバーの 設定-ステータスバー から変更できます')
-
-        # ステータスバー作成メソッド
-        def make_statusbar_element(elementtype=None, text=None, commmand=None):
-            if elementtype == 'label':
-                return Label(text=text)
-            if elementtype == 'button':
-                return Button(text=text, command=commmand, takefocus=False)
 
         # 設定ファイルからステータスバーの設定を読み込むメソッド
         def statusbar_element_setting_load(name: str=str):
@@ -310,15 +316,24 @@ class Main(Frame):
             elif re.compile(r'line_count_\d+').search(name): return(line_count(int(re.search(r'\d+', name).group()) - 1))
             elif re.compile(r'line_count_debug_\d+').search(name): return(line_count_debug(int(re.search(r'\d+', name).group()) - 1))
             elif name == 'current_place': return current_place()
-            elif name == 'hotkeys1': return(self.hotkeys1)
-            elif name == 'hotkeys2': return(self.hotkeys2)
-            elif name == 'hotkeys3': return(self.hotkeys3)
+            elif name == 'hotkeys1': return self.hotkeys1
+            elif name == 'hotkeys2': return self.hotkeys2
+            elif name == 'hotkeys3': return self.hotkeys3
             elif name == 'infomation': return self.infomation
             elif name == 'kaomoji': return self.kaomoji
-            elif name == 'toolbutton_open': return(self.toolbutton_open)
-            elif name == 'toolbutton_over_write_save': return(self.toolbutton_over_write_save)
-            elif name == 'toolbutton_save_as': return(self.toolbutton_save_as)
-            elif name == 'statusbar_message': return(self.statusbar_message)
+            elif name == 'toolbutton_create': return self.toolbutton_create
+            elif name == 'toolbutton_open': return self.toolbutton_open
+            elif name == 'toolbutton_over_write_save': return self.toolbutton_over_write_save
+            elif name == 'toolbutton_save_as': return self.toolbutton_save_as
+            elif name == 'toolbutton_file_reload': return self.toolbutton_file_reload
+            elif name == 'statusbar_message': return self.statusbar_message
+
+        # ステータスバー作成メソッド
+        def make_statusbar_element(elementtype=None, text=None, commmand=None):
+            if elementtype == 'label':
+                return Label(text=text)
+            if elementtype == 'button':
+                return Button(text=text, command=commmand, takefocus=False)
 
         # ステータスバー設定メソッド
         def statusbar_element_setting(event=None, num=None):
@@ -339,11 +354,14 @@ class Main(Frame):
             # ステータスバーを作る
             if num in range(6) and l2:
                 self.statusbar_element_dict[num] = dict()
-                for i,e in zip(range(len(l2)), l2):
+                for i, e in enumerate(l2):
                     if not e: continue
                     self.statusbar_element_dict[num][i] = make_statusbar_element(*e)
                 for e in self.statusbar_element_dict[num].values():
-                    i = 1 if num < 4 else 0
+                    if num < 4:
+                        i = 1
+                    else:
+                        i = 0
                     self.statusbars[num].add(e, weight=i)
                 if num > 3:
                     self.statusbars[num].add(Frame())
@@ -358,6 +376,7 @@ class Main(Frame):
                         self.statusbar_element_dict[e][f]['text'] = new_element
                     elif type(self.statusbar_element_dict[e][f]) == Button:
                         pass
+        self.statusbar_element_reload = statusbar_element_reload
 
         self.statusbar_element_dict = dict()
 
@@ -403,19 +422,21 @@ class Main(Frame):
         self.master.bind('<KeyRelease>', reload)
         self.master.bind('<Button>', reload)
         self.master.bind('<ButtonRelease>', reload)
-        # self.master.bind('<KeyPress>', lambda e:print(e), '+')
-        # self.master.bind('<KeyRelease>', lambda e:print(e), '+')
         self.master.bind('<KeyRelease>', self.recode_edit_history, '+')
         self.master.bind('<Control-z>', self.undo)
         self.master.bind('<Control-Z>', self.repeat)
-        self.menu_file.bind_all('<Control-o>', self.file_open)
-        self.menu_file.bind_all('<Control-s>', self.file_over_write_save)
-        self.menu_file.bind_all('<Control-S>', self.file_save_as)
+        self.master.bind('<Control-n>', self.file_create)
+        self.master.bind('<Control-o>', self.file_open)
+        self.master.bind('<Control-s>', self.file_over_write_save)
+        self.master.bind('<Control-S>', self.file_save_as)
+        self.master.bind('<F5>', self.file_reload)
         self.master.bind('<Control-P>', SettingWindow)
         self.master.bind('<Control-w>', focus_to_right)
         self.master.bind('<Alt-.>', focus_to_right)
+        self.master.bind('<Alt-Right>', focus_to_right)
         self.master.bind('<Control-q>', focus_to_left)
         self.master.bind('<Alt-,>', focus_to_left)
+        self.master.bind('<Alt-Left>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
         self.master.bind('<Control-Return>', lambda e: self.newline(e, 1))
         self.master.bind('<Control-Shift-Return>', lambda e: self.newline(e, 0))
@@ -423,16 +444,19 @@ class Main(Frame):
         self.master.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
         self.master.bind('<Control-Y>', self.print_history)
-        self.master.bind('<F1>', lambda e: HelpWindow())
-        self.master.bind('<Control-E>', lambda e: ExportWindow())
+        self.master.bind('<F1>', lambda _: HelpWindow())
+        self.master.bind('<Control-E>', lambda _: ExportWindow())
+        self.master.bind('<Control-f>', lambda _: SearchWindow())
+        self.master.bind('<Control-F>', lambda _: SearchWindow('1'))
 
         # 各パーツを設置
         for w in self.statusbars[0:4]:
             if len(w.panes()):
                 w.pack(fill=X, side=BOTTOM, padx=5, pady=3)
-        for w in self.statusbars[4:6]:
-            if len(w.panes()):
-                w.pack(fill=X)
+        if len(self.statusbars[4].panes()):
+            self.statusbars[4].pack(fill=X)
+        if len(self.statusbars[5].panes()):
+            self.statusbars[5].pack(fill=X, pady=3)
 
         self.f2.pack(fill=Y, side=RIGHT, pady=18)
         self.vbar.pack(fill=Y, expand=YES)
@@ -444,11 +468,11 @@ class Main(Frame):
 
         # 設定ファイルが存在しなかった場合、初回起動と扱う
         if initialization:
-            self.file_open(file=os.path.join(os.path.dirname(__file__), 'hello.txt'))
+            self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'hello.txt'))
 
         # ファイルを渡されているとき、そのファイルを開く
         if len(sys.argv) > 1:
-            self.file_open(file=sys.argv[1])
+            self.file_open(file_path_to_open=sys.argv[1])
 
         self.master.after(1000, self.change_window_title)
         self.master.after(self.ms_align_the_lines, self.align_the_lines)
@@ -464,7 +488,7 @@ class Main(Frame):
         drive = drive.upper()
         return os.path.join(drive, tail)
 
-    def make_text_editor(self):
+    def make_text_editor(self, e=None):
         '''
         テキストエディタ部分の要素の準備
         '''
@@ -516,6 +540,9 @@ class Main(Frame):
             self.maintexts.append(Text(self.columns[i], wrap=self.wrap,
                                     font=self.font,
                                     spacing3=self.between_lines))
+        for w in self.maintexts:
+            w.tag_config('search', background='blue', foreground='white')
+            w.tag_config('search_selected', background='cyan', foreground='white')
 
         for i in range(self.number_of_columns):
             # 列の枠を作成
@@ -571,34 +598,40 @@ class Main(Frame):
             self.maintexts[0].see(INSERT)
         self.set_text_widget_editable()
 
-    # 以下、ファイルを開始、保存、終了に関するメソッド
-    def file_open(self, e=None, file: str|None=None):
+    # 以下、ファイルの開始、保存、終了に関するメソッド
+    def file_create(self, e=None):
+        if not self.file_close():
+            return
+        self.filepath = ''
+        self.data = self.data0.copy()
+        self.edit_history = deque([self.data])
+        self.undo_history = deque([])
+        self.make_text_editor()
+
+    def file_open(self, e=None, file_path_to_open: str|None=None):
         '''
         '''
-        self.file_close()
+        # 編集中のファイルに更新がある場合、ファイル終了ダイアログが表示される。
+        # ファイル終了ダイアログでファイルを終了する選択を取らなかった場合、ファイル開始を中断する
+        if not self.file_close():
+            return
         # 開くファイルを指定されている場合、ファイル選択ダイアログをスキップする
-        if file:
+        if file_path_to_open:
             # ドライブ文字を大文字にする
-            newfilepath = self.convert_drive_to_uppercase(file)
+            file_path_to_open = self.convert_drive_to_uppercase(file_path_to_open)
         else:
-            newfilepath = filedialog.askopenfilename(
+            file_path_to_open = filedialog.askopenfilename(
                 title = '編集ファイルを選択',
                 initialdir = self.initialdir,
                 initialfile='file.sep',
                 filetypes=[('SoroEditorプロジェクトファイル', '.sep'), ('YAMLファイル', '.yaml'), ('その他', '.*'), ('ThreeCrowsプロジェクトファイル', '.tcs'), ('CastellaEditorプロジェクトファイル', '.cep')],
                 defaultextension='sep')
 
-        if newfilepath:
-            if os.path.exists(newfilepath):
-                self.filepath = newfilepath
-            else:
-                return
+        log.info(f'Opening file: {file_path_to_open}')
 
-        log.info(f'Opening file: {newfilepath}')
-
-        if self.filepath:
+        if file_path_to_open:
             try:
-                with open(self.filepath, mode='rt', encoding='utf-8') as f:
+                with open(file_path_to_open, mode='rt', encoding='utf-8') as f:
                     newdata: dict = yaml.safe_load(f)
                     if 'version' in newdata.keys():
                         self.data = newdata
@@ -639,10 +672,10 @@ class Main(Frame):
                     self.entrys[0].focus_set()
                     self.edit_history.appendleft(data)
 
-                self.initialdir = os.path.dirname(self.filepath)
+                self.initialdir = os.path.dirname(file_path_to_open)
 
                 # 最近使用したファイルのリストを修正し、settings.yamlに反映
-                self.recently_files.insert(0, self.filepath)
+                self.recently_files.insert(0, file_path_to_open)
                 # '\'を'/'に置換
                 self.recently_files = [v.replace('\\', '/') for v in self.recently_files]
                 # 重複を削除
@@ -657,10 +690,10 @@ class Main(Frame):
                     self.menu_file_recently.delete(0)
                 try:
                     self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
-                    self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
-                    self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
-                    self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
-                    self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+                    self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file_path_to_open=self.recently_files[1]))
+                    self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file_path_to_open=self.recently_files[2]))
+                    self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file_path_to_open=self.recently_files[3]))
+                    self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file_path_to_open=self.recently_files[4]))
                 except IndexError:
                     pass
 
@@ -669,8 +702,8 @@ class Main(Frame):
                 md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが見つかりません')
                 md.show(self.md_position)
                 # 最近使用したファイルに見つからなかったファイルが入っている場合、削除しsettins.yamlに反映する
-                if newfilepath in self.recently_files:
-                    self.recently_files.remove(newfilepath)
+                if file_path_to_open in self.recently_files:
+                    self.recently_files.remove(file_path_to_open)
                     self.settings['recently_files'] = self.recently_files
                 # 設定ファイルに書き込み
                 self.update_setting_file()
@@ -684,11 +717,11 @@ class Main(Frame):
                     if self.filepath:
                         self.menu_file_recently.add_command(label=self.filepath + ' (現在のファイル)')
                     else:
-                        self.menu_file_recently.add_command(label=self.recently_files[0], command=lambda:self.file_open(file=self.recently_files[0]))
-                    self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
-                    self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
-                    self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
-                    self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+                        self.menu_file_recently.add_command(label=self.recently_files[0], command=lambda:self.file_open(file_path_to_open=self.recently_files[0]))
+                    self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file_path_to_open=self.recently_files[1]))
+                    self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file_path_to_open=self.recently_files[2]))
+                    self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file_path_to_open=self.recently_files[3]))
+                    self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file_path_to_open=self.recently_files[4]))
                 except IndexError:
                     pass
                 return
@@ -704,6 +737,7 @@ class Main(Frame):
                 md.show(self.md_position)
 
             else:
+                self.filepath = file_path_to_open
                 log.info(f'Success opening file: {self.filepath}')
                 self.align_the_lines(1.0, 1.0, False)
 
@@ -716,7 +750,6 @@ class Main(Frame):
             defaultextension='sep'
         )
         if self.filepath:
-            print(self.filepath)
             self.save_file(self.filepath)
             return True
         else:
@@ -785,15 +818,18 @@ class Main(Frame):
             self.menu_file_recently.delete(0)
         try:
             self.menu_file_recently.add_command(label=self.recently_files[0] + ' (現在のファイル)')
-            self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file=self.recently_files[1]))
-            self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file=self.recently_files[2]))
-            self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file=self.recently_files[3]))
-            self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file=self.recently_files[4]))
+            self.menu_file_recently.add_command(label=self.recently_files[1], command=lambda:self.file_open(file_path_to_open=self.recently_files[1]))
+            self.menu_file_recently.add_command(label=self.recently_files[2], command=lambda:self.file_open(file_path_to_open=self.recently_files[2]))
+            self.menu_file_recently.add_command(label=self.recently_files[3], command=lambda:self.file_open(file_path_to_open=self.recently_files[3]))
+            self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file_path_to_open=self.recently_files[4]))
         except IndexError:
             pass
 
-    def file_close(self, shouldExit=False):
-
+    def file_close(self, shouldExit=False) -> bool:
+        '''
+        ファイルを閉じる際のメソッド
+        ファイルが閉じられた場合はTrueを、閉じられなかった場合はFalseを返す
+        '''
         current_data = self.get_current_data()
 
         if shouldExit:
@@ -808,22 +844,32 @@ class Main(Frame):
         if self.data == current_data:
             if shouldExit:
                 self.master.destroy()
-        elif self.data != current_data:
-            mg = MessageDialog(message=message, title=title, buttons=buttons)
-            mg.show(self.md_position)
-            if mg.result in ('保存せず終了', '保存せず変更'):
+            return True
+        if self.data != current_data:
+            messagedialog = MessageDialog(message=message, title=title, buttons=buttons)
+            messagedialog.show(self.md_position)
+            if messagedialog.result in ('保存せず終了', '保存せず変更'):
                 if shouldExit:
                     self.master.destroy()
-            elif mg.result in ('保存して終了', '保存して変更'):
+                return True
+            if messagedialog.result in ('保存して終了', '保存して変更'):
                 if self.file_over_write_save():
                     if shouldExit:
                         self.master.destroy()
-            else:
+                    return True
+            if messagedialog.result == ('キャンセル', None):
                 pass
+            return False
+
+    def file_reload(self, e=None):
+        first_data = self.data
+        self.data = self.get_current_data()
+        self.make_text_editor()
+        self.data = first_data
 
     def open_last_file(self, e=None):
         if not self.filepath:
-            self.file_open(file=self.recently_files[0])
+            self.file_open(file_path_to_open=self.recently_files[0])
 
     # 以下、エディターの編集に関するメソッド
     def letter_count(self, obj:ScrolledText|Text|str=''):
@@ -1028,6 +1074,9 @@ class Main(Frame):
         '''
         位置を合わせる
         '''
+        if self.wrap != NONE:
+            return
+
         height = self.textboxes[0].winfo_height()
 
         # 各行の表示位置を確認し、変更を検知する
@@ -1164,6 +1213,8 @@ class Main(Frame):
         定期的にバックアップファイルにデータを保存する
         '''
 
+        log.info('---Backup---')
+
         if not self.do_backup:
             return
         backup_max = 50
@@ -1215,11 +1266,11 @@ class Main(Frame):
             with open(backup_filepath, 'wt', encoding='utf-8') as f:
                 f.writelines(backup_data)
         except OSError as e:
-            log.error(f'Failed to write backup file: {e}')
+            log.error(f'---Failed Backup---\n: {e}')
             return
 
         # バックアップ完了メッセージをログに出力する
-        log.info(f'Backup completed: {backup_filepath}')
+        log.info(f'{backup_filepath}\n---Success Backup---')
 
         # backup_frequency秒後に再度バックアップを実行する
         self.master.after(self.backup_frequency, self.backup)
@@ -1228,14 +1279,15 @@ class Main(Frame):
         '''
         定期的にファイルを保存する
         '''
+        log.info(f'---Autosave---')
         if not self.do_autosave:
             return
         if not self.filepath:
             return
         if self.file_over_write_save():
-            log.info(f'Autosave completed: {self.filepath}')
+            log.info(f'---Success Autosave---')
         else:
-            log.error(f'Failed Autosave: {self.filepath}')
+            log.error(f'---Failed Autosave---')
         self.master.after(self.autosave_frequency, self.autosave)
 
     def popup(self, e=None):
@@ -1251,7 +1303,7 @@ class SettingWindow(Toplevel):
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
-        log.info('Open SettingWindow')
+        log.info('---Open SettingWindow---')
         # 設定ファイルの読み込み
         with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
             self.settings = yaml.safe_load(f)
@@ -1376,7 +1428,7 @@ class SettingWindow(Toplevel):
         self.setting_between_lines.pack(anchor=W)
         lf2_2.pack(side=LEFT)
         ### 折り返し
-        Label(lf2_3, text='*折り返し').pack(anchor=W)
+        Label(lf2_3, text='*折り返し (none以外にすると同期スクロールが無効になります)').pack(anchor=W)
         self.setting_wrap = StringVar()
         self.setting_wrap_menu = OptionMenu(lf2_3, self.setting_wrap, self.wrap, *['none', 'char', 'word'])
         self.setting_wrap_menu.pack(anchor=W)
@@ -1700,9 +1752,11 @@ backup-{ファイル名}.$epに保存されます
             ['ショートカットキー3', 'hotkeys3'],
             ['各機能情報', 'infomation'],
             ['顔文字', 'kaomoji'],
+            ['ボタン - 新規作成', 'toolbutton_create'],
             ['ボタン - ファイルを開く', 'toolbutton_open'],
             ['ボタン - 上書き保存', 'toolbutton_over_write_save'],
             ['ボタン - 名前をつけて保存', 'toolbutton_save_as'],
+            ['ボタン - 再読込', 'toolbutton_file_reload'],
             ['ステータスバー初期メッセージ', 'statusbar_message']]
         for x in l:
             if val == x[0]: return x[1]
@@ -1710,7 +1764,7 @@ backup-{ファイル名}.$epに保存されます
         return ''
 
     def close(self):
-        log.info('Closed SettingWindow')
+        log.info('---Closed SettingWindow---')
         self.destroy()
 
 class ProjectFileSettingWindow(Toplevel):
@@ -1719,21 +1773,21 @@ class ProjectFileSettingWindow(Toplevel):
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
-        log.info('Open ProjectFileSettingWindow')
+        log.info('---Open ProjectFileSettingWindow---')
         if app.get_current_data() != app.data:
             self.withdraw()
-            mg = MessageDialog('プロジェクトファイル設定を変更する前にプロジェクトファイルを保存します',
+            messagedialog = MessageDialog('プロジェクトファイル設定を変更する前にプロジェクトファイルを保存します',
                         'SoroEditor - プロジェクトファイル設定',
                         ['OK:success', 'キャンセル:secondary'],)
-            mg.show(app.md_position)
-            if mg.result == 'OK':
+            messagedialog.show(app.md_position)
+            if messagedialog.result == 'OK':
                 x = app.file_over_write_save()
                 if x:
                     self.deiconify()
                 else:
                     self.destroy()
                     return
-            elif mg.result == 'キャンセル':
+            elif messagedialog.result == 'キャンセル':
                 self.destroy()
                 return
 
@@ -1801,7 +1855,7 @@ class ProjectFileSettingWindow(Toplevel):
             self.close()
 
     def close(self):
-        log.info('Close ProjectFileSettingWindow')
+        log.info('---Close ProjectFileSettingWindow---')
         self.destroy()
 
 
@@ -1822,7 +1876,7 @@ class ThirdPartyNoticesWindow(Toplevel):
         def open_url(url):
             def inner(_):
                 webbrowser.open_new(url)
-                print(url)
+                log.info(f'Open {url}')
             return inner
         for m in pattern.finditer(text):
             index = widget.search(m.group(), 0.0)
@@ -1865,12 +1919,12 @@ class HelpWindow(Toplevel):
                     spacing1=10, spacing3=10)
         t.tag_config('h1', font=font_h1, underline=True,
                     spacing1=20, spacing3=15)
-        t.tag_config('text', font=font_text)
+        t.tag_config('text', font=font_text, spacing1=5, spacing2=5)
         t.tag_config('github', underline=True)
         t.tag_config('github_issue', underline=True)
         t.tag_config('mail', underline=True)
         github = open_url('https://github.com/joppincal/SoroEditor')
-        github_issue = open_url('https://github.com/joppincal/SoroEditor/issue')
+        github_issue = open_url('https://github.com/joppincal/SoroEditor/issues')
         mail = open_url('mailto://Joppincal@mailo.com?subject=SoroEditorについて')
         t.tag_bind('github', '<Button-1>', github)
         t.tag_bind('github_issue', '<Button-1>', github_issue)
@@ -1891,7 +1945,7 @@ class HelpWindow(Toplevel):
         t.insert(END, '設定可能項目\n', 'h1')
         t.insert(END,
 '''設定(S)	から
-・列数・列幅
+・列数/列幅
 ・フォント（ファミリー・サイズ）
 ・表示テーマ
 ・画面端の折り返し（なし 文字で折り返し 単語で折り返し（英語向け））
@@ -1900,6 +1954,8 @@ class HelpWindow(Toplevel):
 ・編集中の行の強調表示（デフォルトでは下線）
 ・行番号
 ・起動時のウィンドウサイズ
+・自動保存
+・バックアップ
 
 *列数・列幅に関しては、ファイル(F)→プロジェクト設定(F)	から
 プロジェクトファイルごとに設定できます\n''', 'text')
@@ -1909,13 +1965,27 @@ class HelpWindow(Toplevel):
 Ctrl+R:           前回使用したファイルを開く
 Ctrl+S:           上書き保存
 Ctrl+Shift+S:     名前をつけて保存
+Ctrl+Shift+E:     エクスポート
+Ctrl+Shift+P:     設定
+
+Ctrl+F:           検索
+Ctrl+Shift+F:     置換
+
 Ctrl+Z:           取り消し
 Ctrl+Shift+Z:     取り消しを戻す
 Ctrl+Enter:       1行追加（下）
+
 Ctrl+Shift+Enter: 1行追加（上）
 Ctrl+L:           1行選択
 Ctrl+Q, Alt+<:    左の列に移動
 Ctrl+W, Alt+>:    右の列に移動\n''', 'text')
+        t.insert(END, '検索/置換\n', 'h1')
+        t.insert(END,
+'''検索/置換機能はメニューバーから、またはショートカットキーからアクセスできます
+検索/置換にはPythonの正規表現を用いる事もできます
+ただし、\\nを用いて改行を挟んだ検索を行う事はできません（修正を検討中）
+行頭を^、行末を$で表す事が可能です
+また、検索ウィンドウを開いている最中にもテキストの編集は可能ですが、その際に行がずれると置換がうまくいかなくなります（修正を検討中）\n''', 'text')
         t.insert(END, 'プロジェクトファイル\n', 'h1')
         t.insert(END,
 '''プロジェクトファイルはYAML形式のファイルの拡張子を*.sepに変更したものです
@@ -1956,10 +2026,10 @@ class AboutWindow(Toplevel):
         main.tag_config('link', justify=CENTER, spacing2=10, font=font.Font(size=12, weight='normal', underline=True))
         github = 'https://github.com/joppincal/SoroEditor'
         main.tag_config('github')
-        main.tag_bind('github', '<Button-1>', lambda e: webbrowser.open_new(github))
+        main.tag_bind('github', '<Button-1>', lambda _: webbrowser.open_new(github))
         homepage = ''
         main.tag_config('homepage')
-        main.tag_bind('homepage', '<Button-1>', lambda e: webbrowser.open_new(homepage))
+        main.tag_bind('homepage', '<Button-1>', lambda _: webbrowser.open_new(homepage))
 
         main.insert(END, 'ここにアイコンを表示\n')
         main.insert(END, 'そろエディタ\nSoroEditor\n', 'title')
@@ -1985,7 +2055,7 @@ class ExportWindow(Toplevel):
     def __init__(self, title="SoroEditor - エクスポート", iconphoto='', size=(1000, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
-        log.info('Open ExportWindow')
+        log.info('---Open ExportWindow---')
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
@@ -2250,7 +2320,237 @@ class ExportWindow(Toplevel):
             return True
 
     def close(self):
-        log.info('Close ExportWindow')
+        log.info('---Close ExportWindow---')
+        self.destroy()
+
+
+class SearchWindow(Toplevel):
+
+    def __init__(self, title='', iconphoto='', size=None, position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        log.info('---Open SearchWindow---')
+
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+        if self.title() == '0':
+            self.win_title = 'SoroEditor - 検索'
+            mode = 0
+        if self.title() == '1':
+            self.win_title = 'SoroEditor - 置換'
+            mode = 1
+        else:
+            self.win_title = 'SoroEditor - 検索'
+            mode = 0
+        self.title(self.win_title)
+
+        if mode == 0:
+            log.info('Search Mode')
+        if mode == 1:
+            log.info('Replace Mode')
+
+        self.config(padx=10, pady=10)
+
+        Label(self, text='検索').pack(padx=10, pady=0, anchor=W)
+        self.text_in_entry = StringVar()
+        self.entry = Entry(self, textvariable=self.text_in_entry, width=50)
+        self.entry.bind('<Return>', lambda _: self.entry_return())
+        self.entry.bind('<Shift-Return>', lambda _: self.entry_return(True))
+        self.entry.pack(fill=X, padx=10, pady=10)
+        self.entry.focus()
+        self.use_regular_expression = BooleanVar()
+        Checkbutton(
+            self,
+            variable=self.use_regular_expression,
+            text='正規表現を用いる',
+            takefocus=False,
+            bootstyle='round-toggle'
+            ).pack(padx=10,pady=0,anchor=W)
+
+        if mode == 1:
+            Label(self, text='置換').pack(padx=10, pady=0, anchor=W)
+            self.text_in_entry2 = StringVar()
+            self.entry2 = Entry(self, textvariable=self.text_in_entry2, width=50)
+            self.entry2.bind('<Return>', lambda _: self.entry2_return())
+            self.entry2.bind('<Shift-Return>', lambda _: self.entry2_return(True))
+            self.entry2.pack(fill=X, padx=10, pady=10)
+
+        f2 = Frame(self, padding=5)
+        self.search_button = Button(f2, text='検索', command=self.search_button_clicked)
+        self.search_button.pack(side=RIGHT, padx=2)
+        if mode == 1:
+            self.replace_next_button = Button(f2, text='置換して次へ', command=self.replace_button_clicked)
+            self.replace_next_button.pack(side=RIGHT, padx=2)
+            self.replace_prev_button = Button(f2, text='置換して前へ', command=lambda: self.replace_button_clicked(-1))
+            self.replace_prev_button.pack(side=RIGHT, padx=2)
+            self.replace_all_button = Button(f2, text='すべて置換', command=lambda: self.replace_button_clicked(1))
+            self.replace_all_button.pack(side=RIGHT, padx=2)
+        self.next_button = Button(f2, text='次へ', command=self.next_button_clicked, bootstyle='secondary')
+        self.next_button.pack(side=RIGHT, padx=2)
+        self.prev_button = Button(f2, text='前へ', command=self.prev_button_clicked, bootstyle='secondary')
+        self.prev_button.pack(side=RIGHT, padx=2)
+        f2.pack(side=BOTTOM, fill=X, anchor=S)
+
+        self.results = deque([])
+
+        # ウィンドウの設定
+        self.geometry('+{0}+{1}'.format(*app.md_position))
+        self.transient(app)
+
+    def search_button_clicked(self):
+        self.next_button_clicked()
+
+    def search(self, search_text:str) -> list:
+        current_data = app.get_current_data()
+        texts = [current_data[i]['text'] for i in range(10) if current_data[i]['text']]
+        if not self.use_regular_expression.get():
+            search_text = re.escape(search_text)
+        results = []
+        try:
+            for line, texts in enumerate(texts):
+                texts = texts.splitlines(True)
+                for row, text in enumerate(texts):
+                    result = re.finditer(search_text, text)
+                    for m in result:
+                        results.append((line, row, (m.span())))
+        except re.error:
+            results = []
+            messagedialog = MessageDialog(
+                '正規表現エラー\n検索内容を確認してください',
+                self.win_title + ' 正規表現エラー',
+                alert=True,
+                buttons=['OK'],
+                parent=self.entry)
+            messagedialog.show(app.md_position)
+            self.entry.focus()
+        return results
+
+    def make_results(self) -> bool:
+        results = deque(self.search(self.text_in_entry.get()))
+        if set(results) == set(self.results):
+            self.title(self.win_title + ' 0件')
+            return False
+        for w in app.maintexts:
+            w.tag_remove('search', 1.0, END)
+            w.tag_remove('search_selected', 1.0, END)
+        if not self.text_in_entry.get() or not results:
+            self.title(self.win_title + ' 0件')
+            self.results = deque([])
+            return False
+        self.results = results
+        # self.num_of_results = len(self.results)
+        self.last_result = self.results[-1]
+        for line, row, span in self.results:
+            app.maintexts[line].tag_add('search', f'{row+1}.{span[0]}', f'{row+1}.{span[1]}')
+        self.select()
+        return True
+
+    def replace_button_clicked(self, mode=0):
+        self.replace(mode)
+
+    def replace(self, mode=0):
+        '''
+        mode: int[0,-1,1]
+
+        mode=0: Replace one and move on to the next.
+        mode=-1: Replace one and go back to previous.
+        mode=1: Replace All
+        '''
+        if not self.results:
+            self.make_results()
+            return
+        app.set_text_widget_editable(mode=1)
+        if mode == 1:
+            for result in self.results:
+                line, row, span = result
+                # 変更点を抜き出し、置換する
+                pattern = self.text_in_entry.get()
+                if not self.use_regular_expression.get():
+                    pattern = re.escape(pattern)
+                repl = self.text_in_entry2.get()
+                text = app.maintexts[line].get(f'{row+1}.{span[0]} linestart', f'{row+1}.{span[1]} lineend')
+                text = re.sub(pattern, repl, text, 1)
+                # 変更点を削除し、新しいテキストを差し込む
+                app.maintexts[line].delete(f'{row+1}.{span[0]} linestart', f'{row+1}.{span[1]} lineend')
+                app.maintexts[line].insert(f'{row+1}.{span[0]} linestart', text)
+            self.results.clear()
+            self.title(self.win_title + ' 0件')
+        else:
+            result = self.results.popleft()
+            if result == self.last_result:
+                try:
+                    self.last_result = self.results[-1]
+                except IndexError:
+                    self.last_result = None
+            line, row, span = result
+            # 変更点を抜き出し、置換する
+            pattern = self.text_in_entry.get()
+            if not self.use_regular_expression.get():
+                pattern = re.escape(pattern)
+            repl = self.text_in_entry2.get()
+            text = app.maintexts[line].get(f'{row+1}.{span[0]} linestart', f'{row+1}.{span[1]} lineend')
+            text = re.sub(pattern, repl, text, 1)
+            # 変更点を削除し、新しいテキストを差し込む
+            app.maintexts[line].delete(f'{row+1}.{span[0]} linestart', f'{row+1}.{span[1]} lineend')
+            app.maintexts[line].insert(f'{row+1}.{span[0]} linestart', text)
+            self.select(mode)
+        app.set_text_widget_editable(mode=2)
+
+    def entry_return(self, shift:bool=False):
+        if shift:
+            self.prev_button_clicked()
+        else:
+            self.next_button_clicked()
+        self.entry.focus()
+
+    def entry2_return(self, shift:bool=False):
+        if shift:
+            self.replace(-1)
+        else:
+            self.replace()
+        self.entry2.focus()
+
+    def next_button_clicked(self):
+        updated = self.make_results()
+        if not updated:
+            self.results.rotate(-1)
+        self.select()
+        self.next_button.focus()
+
+    def prev_button_clicked(self):
+        updated = self.make_results()
+        if not updated:
+            self.results.rotate(1)
+        self.select()
+        self.prev_button.focus()
+
+    def select(self, index=0):
+        if not self.results:
+            return
+        num_of_results = len(self.results)
+        try:
+            results_index = self.results.index(self.last_result)
+        except IndexError:
+            results_index = 1
+        line, row, span = self.results[index]
+        row = row + 1
+        for w in app.textboxes:
+            w.tag_remove('search_selected', 1.0, END)
+        app.maintexts[line].focus()
+        app.maintexts[line].mark_set(INSERT, f'{row}.{span[1]}')
+        app.maintexts[line].see(f'{row}.{span[1]}')
+        app.align_the_lines(repeat=False)
+        app.maintexts[line].see(f'{row}.{span[1]}')
+        app.maintexts[line].tag_add('search_selected', f'{row}.{span[0]}', f'{row}.{span[1]}')
+        app.statusbar_element_reload()
+        app.highlight()
+        self.title(self.win_title + f' {num_of_results - results_index}/{num_of_results}件')
+
+    def close(self):
+        log.info('---Close SearchWindow---')
+        for w in app.maintexts:
+            w.tag_remove('search', 1.0, END)
+            w.tag_remove('search_selected', 1.0, END)
         self.destroy()
 
 

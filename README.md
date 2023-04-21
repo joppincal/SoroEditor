@@ -31,15 +31,23 @@
 ## ショートカットキー
 
 - Ctrl+O:           ファイルを開く
+- Ctrl+R:           前回使用したファイルを開く
 - Ctrl+S:           上書き保存
 - Ctrl+Shift+S:     名前をつけて保存
+- Ctrl+Shift+E:     エクスポート
+- Ctrl+Shift+P:     設定
+
+- Ctrl+F:           検索
+- Ctrl+Shift+F:     置換
+
 - Ctrl+Z:           取り消し
 - Ctrl+Shift+Z:     取り消しを戻す
 - Ctrl+Enter:       1行追加（下）
+
 - Ctrl+Shift+Enter: 1行追加（上）
 - Ctrl+L:           1行選択
-- Ctrl+Q, Alt+<:   左の列に移動
-- Ctrl+W, Alt+>:   右の列に移動
+- Ctrl+Q, Alt+<:    左の列に移動
+- Ctrl+W, Alt+>:    右の列に移動
 
 ## プロジェクトファイルについて
 
@@ -53,4 +61,4 @@
 
 一般のテキストエディタでも閲覧・編集が可能です
 
-実行ファイル（Soro.exe または Soro.py）と同じフォルダに置いてください
+実行ファイル（SoroEditor.exe または SoroEditor.py）と同じフォルダに置いてください
