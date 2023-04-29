@@ -24,7 +24,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.5'
+__version__ = '0.3.6'
 __projversion__ = '0.2.0'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -411,9 +411,10 @@ class Main(Frame):
                 prev_text.focus_set()
         def focus_to_bottom(e):
             if e.widget.winfo_class() == 'TEntry':
-                print('O')
                 index = self.entrys.index(e.widget)
                 self.maintexts[index].focus_set()
+                self.maintexts[index].mark_set(INSERT, 1.0)
+                self.maintexts[index].see(1.0)
         def reload(e):
             statusbar_element_reload()
             if self.selection_line_highlight: self.highlight()
@@ -1982,10 +1983,7 @@ Ctrl+W, Alt+>:    右の列に移動\n''', 'text')
         t.insert(END, '検索/置換\n', 'h1')
         t.insert(END,
 '''検索/置換機能はメニューバーから、またはショートカットキーからアクセスできます
-検索/置換にはPythonの正規表現を用いる事もできます
-ただし、\\nを用いて改行を挟んだ検索を行う事はできません（修正を検討中）
-行頭を^、行末を$で表す事が可能です
-また、検索ウィンドウを開いている最中にもテキストの編集は可能ですが、その際に行がずれると置換がうまくいかなくなります（修正を検討中）\n''', 'text')
+検索/置換にはPythonの正規表現を用いる事もできます\n''', 'text')
         t.insert(END, 'プロジェクトファイル\n', 'h1')
         t.insert(END,
 '''プロジェクトファイルはYAML形式のファイルの拡張子を*.sepに変更したものです
@@ -2393,6 +2391,10 @@ class SearchWindow(Toplevel):
 
         self.results = deque([])
 
+        self.bind('<Escape>', lambda e: self.close())
+
+        self.loop_make_results()
+
         # ウィンドウの設定
         self.geometry('+{0}+{1}'.format(*app.md_position))
         self.transient(app)
@@ -2401,18 +2403,39 @@ class SearchWindow(Toplevel):
         self.next_button_clicked()
 
     def search(self, search_text:str) -> list:
+        if not search_text:
+            return []
         current_data = app.get_current_data()
         texts = [current_data[i]['text'] for i in range(10) if current_data[i]['text']]
         if not self.use_regular_expression.get():
             search_text = re.escape(search_text)
         results = []
         try:
-            for line, texts in enumerate(texts):
-                texts = texts.splitlines(True)
-                for row, text in enumerate(texts):
-                    result = re.finditer(search_text, text)
-                    for m in result:
-                        results.append((line, row, (m.span())))
+            for line, text in enumerate(texts):
+                newrow_charactors_matches:list[tuple[int, int]] = [(0, 0)]
+                newrow_charactors_matches.extend([m.span() for m in list(re.finditer('\n', text))])
+                search_text_matches:list[tuple[int, int]] = [m.span() for m in list(re.finditer(search_text, text))]
+                # 各行の開始文字数・終了文字数をリスト化する
+                rows_span = [(newrow_charactors_matches[i][1], newrow_charactors_matches[i+1][0]) for i in range(len(newrow_charactors_matches)-1)]
+                rows_span.append((rows_span[-1][1]+1, len(text)))
+                # 検索結果が何行目の何文字目かを確認する
+                for start, stop in search_text_matches:
+                    row_first = -1
+                    for row, t in enumerate(rows_span):
+                        i, j = t
+                        if i <= start <= j:
+                            row_first = row
+                            break
+                    start = start - rows_span[row][0]
+                    row_last = -1
+                    for row, t in enumerate(rows_span):
+                        i, j = t
+                        if i <= stop <= j:
+                            row_last = row
+                            break
+                    stop = stop - rows_span[row][0]
+                    # 結果を追加する
+                    results.append((line, (row_first, row_last), (start, stop)))
         except re.error:
             results = []
             messagedialog = MessageDialog(
@@ -2425,10 +2448,13 @@ class SearchWindow(Toplevel):
             self.entry.focus()
         return results
 
+    def loop_make_results(self):
+        self.make_results()
+        self.after(100, self.loop_make_results)
+
     def make_results(self) -> bool:
         results = deque(self.search(self.text_in_entry.get()))
-        if set(results) == set(self.results):
-            self.title(self.win_title + ' 0件')
+        if results and set(results) == set(self.results):
             return False
         for w in app.maintexts:
             w.tag_remove('search', 1.0, END)
@@ -2438,12 +2464,34 @@ class SearchWindow(Toplevel):
             self.results = deque([])
             return False
         self.results = results
-        # self.num_of_results = len(self.results)
-        self.last_result = self.results[-1]
+        self.results.rotate(1)
+        self.last_result = self.results[0]
         for line, row, span in self.results:
-            app.maintexts[line].tag_add('search', f'{row+1}.{span[0]}', f'{row+1}.{span[1]}')
-        self.select()
+            app.maintexts[line].tag_add('search', f'{row[0]+1}.{span[0]}', f'{row[1]+1}.{span[1]}')
+        self.title(self.win_title + f'{len(self.results)}件')
         return True
+
+    def select(self, index=0):
+        if not self.results:
+            return
+        num_of_results = len(self.results)
+        try:
+            results_index = self.results.index(self.last_result)
+        except IndexError:
+            results_index = 1
+        line, row, span = self.results[index]
+        row = row[0] + 1
+        for w in app.textboxes:
+            w.tag_remove('search_selected', 1.0, END)
+        app.maintexts[line].focus()
+        app.maintexts[line].mark_set(INSERT, f'{row}.{span[1]}')
+        app.maintexts[line].see(f'{row}.{span[1]}')
+        app.align_the_lines(repeat=False)
+        app.maintexts[line].see(f'{row}.{span[1]}')
+        app.maintexts[line].tag_add('search_selected', f'{row}.{span[0]}', f'{row}.{span[1]}')
+        app.statusbar_element_reload()
+        app.highlight()
+        self.title(self.win_title + f' {num_of_results - results_index}/{num_of_results}件')
 
     def replace_button_clicked(self, mode=0):
         self.replace(mode)
@@ -2483,16 +2531,17 @@ class SearchWindow(Toplevel):
                 except IndexError:
                     self.last_result = None
             line, row, span = result
+            row = row[0] + 1
             # 変更点を抜き出し、置換する
             pattern = self.text_in_entry.get()
             if not self.use_regular_expression.get():
                 pattern = re.escape(pattern)
             repl = self.text_in_entry2.get()
-            text = app.maintexts[line].get(f'{row+1}.{span[0]} linestart', f'{row+1}.{span[1]} lineend')
+            text = app.maintexts[line].get(f'{row}.{span[0]} linestart', f'{row}.{span[1]} lineend')
             text = re.sub(pattern, repl, text, 1)
             # 変更点を削除し、新しいテキストを差し込む
-            app.maintexts[line].delete(f'{row+1}.{span[0]} linestart', f'{row+1}.{span[1]} lineend')
-            app.maintexts[line].insert(f'{row+1}.{span[0]} linestart', text)
+            app.maintexts[line].delete(f'{row}.{span[0]} linestart', f'{row}.{span[1]} lineend')
+            app.maintexts[line].insert(f'{row}.{span[0]} linestart', text)
             self.select(mode)
         app.set_text_widget_editable(mode=2)
 
@@ -2523,28 +2572,6 @@ class SearchWindow(Toplevel):
             self.results.rotate(1)
         self.select()
         self.prev_button.focus()
-
-    def select(self, index=0):
-        if not self.results:
-            return
-        num_of_results = len(self.results)
-        try:
-            results_index = self.results.index(self.last_result)
-        except IndexError:
-            results_index = 1
-        line, row, span = self.results[index]
-        row = row + 1
-        for w in app.textboxes:
-            w.tag_remove('search_selected', 1.0, END)
-        app.maintexts[line].focus()
-        app.maintexts[line].mark_set(INSERT, f'{row}.{span[1]}')
-        app.maintexts[line].see(f'{row}.{span[1]}')
-        app.align_the_lines(repeat=False)
-        app.maintexts[line].see(f'{row}.{span[1]}')
-        app.maintexts[line].tag_add('search_selected', f'{row}.{span[0]}', f'{row}.{span[1]}')
-        app.statusbar_element_reload()
-        app.highlight()
-        self.title(self.win_title + f' {num_of_results - results_index}/{num_of_results}件')
 
     def close(self):
         log.info('---Close SearchWindow---')
