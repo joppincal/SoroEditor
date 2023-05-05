@@ -24,11 +24,10 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.6'
+__version__ = '0.3.7'
 __projversion__ = '0.2.0'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
-__icon__ = ''
 
 def log_setting():
     global log
@@ -80,6 +79,7 @@ class Main(Frame):
                             3: ['current_place', 'line_count_1', 'line_count_2', 'line_count_3'],
                             4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_file_reload'],
                             5: [None]},
+                        'templates':{},
                         'themename': '',
                         'version': __version__,
                         'wrap': NONE}
@@ -110,7 +110,7 @@ class Main(Frame):
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         else:
             self.settings = data
-            log.info('Success loading settings')
+            log.info('Succeed loading settings')
 
         # 設定ファイルから各設定を読み込み
         ## ウィンドウサイズ
@@ -148,7 +148,10 @@ class Main(Frame):
         self.do_backup: bool = self.settings['backup']
         ## バックアップ頻度
         self.backup_frequency: int = self.settings['backup_frequency']
+        ## 定型文
+        self.templates: dict = self.settings['templates']
 
+        self.Icons = Icons()
         self.filepath = ''
         self.data0 = {}
         for i in range(10):
@@ -201,27 +204,33 @@ class Main(Frame):
 
         ## メニューバー - 編集
         self.menu_edit = Menu(menubar)
-
-        self.menu_edit.add_command(label='切り取り(T)', command=self.cut, accelerator='Ctrl+X', underline=5)
-        self.menu_edit.add_command(label='コピー(C)', command=self.copy, accelerator='Ctrl+C', underline=4)
-        self.menu_edit.add_command(label='貼り付け(P)', command=self.paste, accelerator='Ctrl+V', underline=5)
-        self.menu_edit.add_command(label='すべて選択(A)', command=self.select_all, accelerator='Ctrl+A', underline=6)
-        self.menu_edit.add_command(label='1行選択(L)', command=self.select_line, underline=5)
-        self.menu_edit.add_command(label='取り消し(U)', command=self.undo, accelerator='Ctrl+Z', underline=5)
-        self.menu_edit.add_command(label='取り消しを戻す(R)', command=self.repeat, accelerator='Ctrl+Shift+Z', underline=8)
+        self.make_menu_edit(self.menu_edit)
         menubar.add_cascade(label='編集(E)', menu=self.menu_edit, underline=3)
 
         ## メニューバー - 検索
         self.menu_search = Menu(menubar)
 
-        self.menu_search.add_command(label='検索(S)', command=SearchWindow, accelerator='Ctrl+F', underline=3)
-        self.menu_search.add_command(label='置換(R)', command=lambda: SearchWindow('1'), accelerator='Ctrl+Shift+F', underline=3)
+        self.menu_search.add_command(label='検索(S)', command=self.open_SearchWindow, accelerator='Ctrl+F', underline=3)
+        self.menu_search.add_command(label='置換(R)', command=lambda: self.open_SearchWindow('1'), accelerator='Ctrl+Shift+F', underline=3)
 
         menubar.add_cascade(label='検索(S)', menu=self.menu_search, underline=3)
 
+        ## メニューバー - 定型文
+        self.menu_templates = Menu(menubar)
+        self.menu_templates.add_command(label='定型文(T)', command=self.open_TemplateWindow, accelerator='Ctrl+T', underline=4)
+        self.menu_templates.add_separator()
+        self.make_menu_templates()
+        menubar.add_cascade(label='定型文(T)', menu=self.menu_templates, underline=4)
+
+        ## メニューバー - しおり
+        self.menu_bookmark = Menu(menubar)
+        self.menu_bookmark.add_command(label='しおり(B)', command=self.open_BookmarkWindow, accelerator='Ctrl+B', underline=4)
+        self.menu_bookmark.add_separator()
+        menubar.add_cascade(label='しおり(B)', menu=self.menu_bookmark, underline=4)
+
         ## メニューバー - 設定
         self.menu_option = Menu(menubar)
-        self.menu_option.add_command(label='設定(O)', command=SettingWindow, accelerator='Ctrl+Shift+P', underline=3)
+        self.menu_option.add_command(label='設定(O)', command=self.open_SettingWindow, accelerator='Ctrl+Shift+P', underline=3)
         self.menu_option.add_command(label='プロジェクト設定(F)', command=ProjectFileSettingWindow, underline=9)
         menubar.add_cascade(label='設定(O)', menu=self.menu_option, underline=3)
 
@@ -275,9 +284,10 @@ class Main(Frame):
             return ('label', text)
         ## カーソルの現在位置
         def current_place():
-            widget = self.master.focus_get()
+            widget = self.master.focus_lastfor()
             try:
-                index = widget.index(INSERT)
+                if widget.winfo_class() in ('Text', 'TEntry'):
+                    index = widget.index(INSERT)
             except AttributeError:
                 return ('label', ' '*40)
             text = ''
@@ -300,13 +310,19 @@ class Main(Frame):
         ## 各機能情報
         self.infomation = ('label', f'自動保存: {self.do_autosave}, バックアップ: {self.do_backup}')
         ## 顔文字
-        self.kaomoji = ('label', choice(['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)']))
+        self.kaomoji = ('label', choice(['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)']))
         ## ツールボタン
-        self.toolbutton_create = ('button', '新規作成[Ctrl+N]', self.file_create)
-        self.toolbutton_open = ('button', 'ファイルを開く[Ctrl+O]', self.file_open)
-        self.toolbutton_over_write_save = ('button', '上書き保存[Ctrl+S]', self.file_over_write_save)
-        self.toolbutton_save_as = ('button', '名前をつけて保存[Ctrl+Shift+S]', self.file_save_as)
-        self.toolbutton_file_reload = ('button', '再読込[F5]', self.file_reload)
+        self.toolbutton_create = ('button', '新規作成', self.file_create, self.Icons.note_add)
+        self.toolbutton_open = ('button', 'ファイルを開く', self.file_open, self.Icons.file_open)
+        self.toolbutton_over_write_save = ('button', '上書き保存', self.file_over_write_save, self.Icons.save)
+        self.toolbutton_save_as = ('button', '名前をつけて保存', self.file_save_as, self.Icons.save_as)
+        self.toolbutton_file_reload = ('button', '再読込', self.file_reload, self.Icons.reflesh)
+        self.toolbutton_setting = ('button', '設定', self.open_SettingWindow, self.Icons.settings)
+        self.toolbutton_search = ('button', '検索', self.open_SearchWindow, self.Icons.search)
+        self.toolbutton_replace = ('button', '置換', lambda: self.open_SearchWindow(1), self.Icons.find_replace)
+        self.toolbutton_export = ('button', 'エクスポート', ExportWindow, self.Icons.note_export)
+        self.toolbutton_template = ('button', '定型文', self.open_TemplateWindow, self.Icons.list_)
+        self.toolbutton_bookmark = ('button', 'しおり', self.open_BookmarkWindow, self.Icons.bookmark)
         ## 初期ステータスバーメッセージ
         self.statusbar_message = ('label', 'ステータスバーの表示項目はメニューバーの 設定-ステータスバー から変更できます')
 
@@ -326,14 +342,25 @@ class Main(Frame):
             elif name == 'toolbutton_over_write_save': return self.toolbutton_over_write_save
             elif name == 'toolbutton_save_as': return self.toolbutton_save_as
             elif name == 'toolbutton_file_reload': return self.toolbutton_file_reload
+            elif name == 'toolbutton_setting': return self.toolbutton_setting
+            elif name == 'toolbutton_search': return self.toolbutton_search
+            elif name == 'toolbutton_replace': return self.toolbutton_replace
+            elif name == 'toolbutton_export': return self.toolbutton_export
+            elif name == 'toolbutton_template': return self.toolbutton_template
+            elif name == 'toolbutton_bookmark': return self.toolbutton_bookmark
             elif name == 'statusbar_message': return self.statusbar_message
 
         # ステータスバー作成メソッド
-        def make_statusbar_element(elementtype=None, text=None, commmand=None):
+        def make_statusbar_element(elementtype=None, text=None, commmand=None, image=None):
             if elementtype == 'label':
                 return Label(text=text)
             if elementtype == 'button':
-                return Button(text=text, command=commmand, takefocus=False)
+                button = Button(text=text, command=commmand, image=image, takefocus=False, compound=LEFT)
+                if self.windowstyle.theme_use() in  [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'light']:
+                    button.config(bootstyle='light')
+                elif self.windowstyle.theme_use() in [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'dark']:
+                    button.config(bootstyle='dark')
+                return button
 
         # ステータスバー設定メソッド
         def statusbar_element_setting(event=None, num=None):
@@ -347,12 +374,13 @@ class Main(Frame):
                 l2 = []
 
             try:
-                for name in l: l2.append(statusbar_element_setting_load(name))
+                for name in l:
+                    l2.append(statusbar_element_setting_load(name))
             except TypeError as e:
                 pass
 
             # ステータスバーを作る
-            if num in range(6) and l2:
+            if num in range(7) and l2:
                 self.statusbar_element_dict[num] = dict()
                 for i, e in enumerate(l2):
                     if not e: continue
@@ -384,11 +412,22 @@ class Main(Frame):
         self.statusbars = list()
         for i in range(4):
             self.statusbars.append(PanedWindow(self.master, height=30, orient=HORIZONTAL))
-        for i in range(2):
-            self.statusbars.append(PanedWindow(self.master, height=50, orient=HORIZONTAL))
-        for i in range(6):
+        for i in range(3):
+            self.statusbars.append(PanedWindow(self.master, height=40, orient=HORIZONTAL))
+        for i in range(7):
             statusbar_element_setting(num=i)
 
+        # 各パーツを設置
+        for w in self.statusbars[0:4]:
+            if len(w.panes()):
+                w.pack(fill=X, side=BOTTOM, padx=5, pady=3)
+        for w in self.statusbars[4:]:
+            if len(w.panes()):
+                w.pack(fill=X, pady=1)
+
+        self.f2.pack(fill=Y, side=RIGHT, pady=18)
+        self.vbar.pack(fill=Y, expand=YES)
+        self.f1.pack(fill=BOTH, expand=YES)
 
         # キーバインドを設定
         def test_focus_get(e):
@@ -424,6 +463,8 @@ class Main(Frame):
         self.master.bind('<Button>', reload)
         self.master.bind('<ButtonRelease>', reload)
         self.master.bind('<KeyRelease>', self.recode_edit_history, '+')
+        self.master.bind('<Control-x>', lambda _: self.cut_copy(0))
+        self.master.bind('<Control-c>', lambda _: self.cut_copy(1))
         self.master.bind('<Control-z>', self.undo)
         self.master.bind('<Control-Z>', self.repeat)
         self.master.bind('<Control-n>', self.file_create)
@@ -431,7 +472,7 @@ class Main(Frame):
         self.master.bind('<Control-s>', self.file_over_write_save)
         self.master.bind('<Control-S>', self.file_save_as)
         self.master.bind('<F5>', self.file_reload)
-        self.master.bind('<Control-P>', SettingWindow)
+        self.master.bind('<Control-P>', self.open_SettingWindow)
         self.master.bind('<Control-w>', focus_to_right)
         self.master.bind('<Alt-.>', focus_to_right)
         self.master.bind('<Alt-Right>', focus_to_right)
@@ -447,21 +488,14 @@ class Main(Frame):
         self.master.bind('<Control-Y>', self.print_history)
         self.master.bind('<F1>', lambda _: HelpWindow())
         self.master.bind('<Control-E>', lambda _: ExportWindow())
-        self.master.bind('<Control-f>', lambda _: SearchWindow())
-        self.master.bind('<Control-F>', lambda _: SearchWindow('1'))
-
-        # 各パーツを設置
-        for w in self.statusbars[0:4]:
-            if len(w.panes()):
-                w.pack(fill=X, side=BOTTOM, padx=5, pady=3)
-        if len(self.statusbars[4].panes()):
-            self.statusbars[4].pack(fill=X)
-        if len(self.statusbars[5].panes()):
-            self.statusbars[5].pack(fill=X, pady=3)
-
-        self.f2.pack(fill=Y, side=RIGHT, pady=18)
-        self.vbar.pack(fill=Y, expand=YES)
-        self.f1.pack(fill=BOTH, expand=YES)
+        self.master.bind('<Control-f>', self.open_SearchWindow)
+        self.master.bind('<Control-F>', lambda _: self.open_SearchWindow('1'))
+        self.master.bind('<Control-t>', self.open_TemplateWindow)
+        self.master.bind('<Control-b>', self.open_BookmarkWindow)
+        for i in range(10):
+            num = 0 if i == 9 else i + 1
+            self.master.bind(f'<Alt-Key-{num}>', self.menu_templates_clicked(i))
+            self.master.bind(f'<Control-Key-{num}>', self.menu_templates_clicked(i))
 
         # 設定ファイルに異常があり初期化した場合、その旨を通知する
         if self.settingFile_Error_md:
@@ -475,7 +509,7 @@ class Main(Frame):
         if len(sys.argv) > 1:
             self.file_open(file_path_to_open=sys.argv[1])
 
-        self.master.after(1000, self.change_window_title)
+        self.master.after(500, self.change_window_title)
         self.master.after(self.ms_align_the_lines, self.align_the_lines)
         self.master.after(self.autosave_frequency, self.autosave)
         self.master.after(self.backup_frequency, self.backup)
@@ -569,13 +603,13 @@ class Main(Frame):
             self.entrys[i].insert(END, self.data[i]['title'])
             self.maintexts[i].insert(END, self.data[i]['text'])
 
-        self.align_number_of_rows()
-
         self.textboxes = self.maintexts + [self.dummy_maintext]
         try:
             self.textboxes.append(self.line_number_box)
         except AttributeError as e:
             print(e)
+
+        self.align_number_of_rows()
 
         for w in self.maintexts:
             w.bind('<Button-3>', self.popup)
@@ -597,6 +631,9 @@ class Main(Frame):
         # カーソルを最初の列に移動する
         if e:
             self.maintexts[0].see(INSERT)
+        else:
+            for w in self.textboxes:
+                w.mark_set(INSERT, 1.0)
         self.set_text_widget_editable()
 
     # 以下、ファイルの開始、保存、終了に関するメソッド
@@ -739,7 +776,7 @@ class Main(Frame):
 
             else:
                 self.filepath = file_path_to_open
-                log.info(f'Success opening file: {self.filepath}')
+                log.info(f'Succeed opening file: {self.filepath}')
                 self.align_the_lines(1.0, 1.0, False)
 
     def file_save_as(self, e=None) -> bool:
@@ -983,43 +1020,62 @@ class Main(Frame):
     def print_history(self, e=None):
         print(self.edit_history)
 
-    def cut(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            if self.master.focus_get().tag_ranges(SEL):
-                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
-                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
-        elif self.master.focus_get().winfo_class() == 'TEntry':
-            t = self.master.focus_get().get()
-            self.master.focus_get().delete(0, END)
-        self.clipboard_append(t)
-        self.recode_edit_history()
+    def cut_copy(self, mode=0):
+        '''
+        mode: int[0, 1]
+            mode=0: cut
+            mode=1: copy
+        '''
+        widget = self.master.focus_get()
+        widget_class = widget.winfo_class()
 
-    def copy(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            if self.master.focus_get().tag_ranges(SEL):
-                t = self.master.focus_get().get(SEL_FIRST, SEL_LAST)
-        elif self.master.focus_get().winfo_class() == 'TEntry':
-            t = self.master.focus_get().get()
+        if widget_class == 'Text':
+            if widget.tag_ranges(SEL):
+                t = widget.get(SEL_FIRST, SEL_LAST)
+                if mode == 0:
+                    widget.delete(SEL_FIRST, SEL_LAST)
+            else:
+                t = widget.get(INSERT+' linestart', INSERT+'+1line linestart')
+                if mode == 0:
+                    widget.delete(INSERT+' linestart', INSERT+'+1line linestart')
+
+        elif widget_class == 'TEntry':
+            t = widget.get()
+            if mode == 0:
+                widget.delete(0, END)
+
+        self.clipboard_clear()
         self.clipboard_append(t)
+        if mode == 0:
+            self.recode_edit_history()
 
     def paste(self, e=None):
-        t = self.clipboard_get()
-        if self.master.focus_get().winfo_class() == 'Text':
-            if self.master.focus_get().tag_ranges(SEL):
-                self.master.focus_get().delete(SEL_FIRST, SEL_LAST)
-        self.master.focus_get().insert(INSERT, t)
+        widget = self.master.focus_get()
+        widget_class = widget.winfo_class()
+        try:
+            t = self.clipboard_get()
+        except tkinter.TclError:
+            return
+        if widget_class == 'Text':
+            if widget.tag_ranges(SEL):
+                widget.delete(SEL_FIRST, SEL_LAST)
+        widget.insert(INSERT, t)
         self.recode_edit_history()
 
     def select_all(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            self.master.focus_get().tag_add(SEL, '1.0', END+'-1c')
-        elif self.master.focus_get().winfo_class() == 'TEntry':
+        widget = self.master.focus_get()
+        widget_class = widget.winfo_class()
+        if widget_class == 'Text':
+            widget.tag_add(SEL, '1.0', END+'-1c')
+        elif widget_class == 'TEntry':
             pass
 
     def select_line(self, e=None):
-        if self.master.focus_get().winfo_class() == 'Text':
-            self.master.focus_get().tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
-        elif self.master.focus_get().winfo_class() == 'TEntry':
+        widget = self.master.focus_get()
+        widget_class = widget.winfo_class()
+        if widget_class == 'Text':
+            widget.tag_add(SEL, INSERT+' linestart', INSERT+' lineend')
+        elif widget_class == 'TEntry':
             pass
 
     def newline(self, e, mode=0):
@@ -1027,9 +1083,8 @@ class Main(Frame):
         行を追加する
 
         mode: int=[0, 1]
-
-        mode=0: 上に追加
-        mode=1: 下に追加
+            mode=0: 上に追加
+            mode=1: 下に追加
         '''
         if type(e.widget) == tkinter.Text:
 
@@ -1045,6 +1100,43 @@ class Main(Frame):
             elif mode == 1: e.widget.mark_set(INSERT, INSERT+'+1line linestart')
 
             self.set_text_widget_editable(mode=0)
+
+    def insert_template_to_maintext(self, num):
+        text = self.templates[num]
+        widget = self.focus_lastfor()
+        if widget in self.maintexts+self.entrys:
+            widget.insert(INSERT, text)
+
+    def menu_templates_clicked(self, num):
+        def inner(*_):
+            self.insert_template_to_maintext(num)
+        return inner
+
+    def make_menu_edit(self, parent:Menu):
+        parent.add_command(label='切り取り(T)', command=lambda: self.cut_copy(), accelerator='Ctrl+X', underline=5)
+        parent.add_command(label='コピー(C)', command=lambda: self.cut_copy(1), accelerator='Ctrl+C', underline=4)
+        parent.add_command(label='貼り付け(P)', command=self.paste, accelerator='Ctrl+V', underline=5)
+        parent.add_command(label='すべて選択(A)', command=self.select_all, accelerator='Ctrl+A', underline=6)
+        parent.add_command(label='1行選択(L)', command=self.select_line, underline=5)
+        parent.add_command(label='取り消し(U)', command=self.undo, accelerator='Ctrl+Z', underline=5)
+        parent.add_command(label='取り消しを戻す(R)', command=self.repeat, accelerator='Ctrl+Shift+Z', underline=8)
+
+    def make_menu_templates(self):
+        self.menu_templates.delete(2, 12)
+        for i in range(10):
+            num = i + 1 if i != 9 else 0
+            try:
+                text = repr(self.templates[i])[1:-1]
+            except SyntaxError:
+                text = repr(self.templates[i][:-1])[1:-1]
+            label = f'({num}): {text[:10]}...' if len(text) > 10 else f'({num}): {text}'
+            self.menu_templates.add_command(label=label,
+                                            command=self.menu_templates_clicked(i),
+                                            accelerator=f'Ctrl or Alt+{i}',
+                                            underline=1)
+
+    def make_menu_bookmarks(self):
+        pass
 
     def highlight(self):
         '''
@@ -1214,10 +1306,10 @@ class Main(Frame):
         定期的にバックアップファイルにデータを保存する
         '''
 
-        log.info('---Backup---')
-
         if not self.do_backup:
             return
+        log.info('---Backup---')
+
         backup_max = 50
 
         # バックアップファイル名・パスを生成する
@@ -1271,7 +1363,7 @@ class Main(Frame):
             return
 
         # バックアップ完了メッセージをログに出力する
-        log.info(f'{backup_filepath}\n---Success Backup---')
+        log.info(f'{backup_filepath}\n---Succeed Backup---')
 
         # backup_frequency秒後に再度バックアップを実行する
         self.master.after(self.backup_frequency, self.backup)
@@ -1280,20 +1372,65 @@ class Main(Frame):
         '''
         定期的にファイルを保存する
         '''
-        log.info(f'---Autosave---')
         if not self.do_autosave:
             return
         if not self.filepath:
             return
+        log.info(f'---Autosave---')
         if self.file_over_write_save():
-            log.info(f'---Success Autosave---')
+            log.info(f'---Succeed Autosave---')
         else:
             log.error(f'---Failed Autosave---')
         self.master.after(self.autosave_frequency, self.autosave)
 
     def popup(self, e=None):
-        e.widget.mark_set(INSERT, CURRENT)
-        self.menu_edit.post(e.x_root,e.y_root)
+        '''右クリックメニュー'''
+        # 表示するメニューの生成
+        menu = Menu()
+        self.make_menu_edit(menu)
+        menu.add_separator()
+        menu.add_cascade(label='しおり(B)', menu=self.menu_bookmark)
+        menu.add_cascade(label='定型文(T)', menu=self.menu_templates)
+
+        e.widget.focus_set()
+        menu.post(e.x_root,e.y_root)
+
+    def open_SettingWindow(self, *_):
+        '''重複を防ぐ'''
+        try:
+            self.settingwindow
+        except AttributeError:
+            self.settingwindow = None
+        if self.settingwindow == None or not self.settingwindow.winfo_exists():
+            self.settingwindow = SettingWindow()
+
+    def open_SearchWindow(self, mode=0):
+        '''重複を防ぐ'''
+        try:
+            self.searchwindow
+        except AttributeError:
+            self.searchwindow = None
+        if self.searchwindow == None or not self.searchwindow.winfo_exists():
+            self.searchwindow = SearchWindow(mode)
+
+    def open_TemplateWindow(self, *_):
+        '''重複を防ぐ'''
+        try:
+            self.templatewindow
+        except AttributeError:
+            self.templatewindow = None
+        if self.templatewindow == None or not self.templatewindow.winfo_exists():
+            self.templatewindow = TemplateWindow()
+
+    def open_BookmarkWindow(self, *_):
+        '''重複を防ぐ'''
+        try:
+            self.bookmarkwindow
+        except AttributeError:
+            self.bookmarkwindow = None
+        if self.bookmarkwindow == None or not self.bookmarkwindow.winfo_exists():
+            self.bookmarkwindow = BookmarkWindow()
+
 
 class SettingWindow(Toplevel):
     '''
@@ -1326,11 +1463,46 @@ class SettingWindow(Toplevel):
         backup = self.settings['backup']
         self.backup_frequency = self.settings['backup_frequency']
 
+        self.pair_of_status_bar_elements = [
+            ['文字数カウンター - 1列目', 'letter_count_1'],
+            ['文字数カウンター - 2列目', 'letter_count_2'],
+            ['文字数カウンター - 3列目', 'letter_count_3'],
+            ['文字数カウンター - 4列目', 'letter_count_4'],
+            ['文字数カウンター - 5列目', 'letter_count_5'],
+            ['行数カウンター - 1列目', 'line_count_1'],
+            ['行数カウンター - 2列目', 'line_count_2'],
+            ['行数カウンター - 3列目', 'line_count_3'],
+            ['行数カウンター - 4列目', 'line_count_4'],
+            ['行数カウンター - 5列目', 'line_count_5'],
+            ['カーソルの現在位置', 'current_place'],
+            ['ショートカットキー1', 'hotkeys1'],
+            ['ショートカットキー2', 'hotkeys2'],
+            ['ショートカットキー3', 'hotkeys3'],
+            ['各機能情報', 'infomation'],
+            ['顔文字', 'kaomoji'],
+            ['ステータスバー初期メッセージ', 'statusbar_message']]
+        self.pair_of_tool_bar_elements = [
+            ['ボタン - 新規作成', 'toolbutton_create'],
+            ['ボタン - ファイルを開く', 'toolbutton_open'],
+            ['ボタン - 上書き保存', 'toolbutton_over_write_save'],
+            ['ボタン - 名前をつけて保存', 'toolbutton_save_as'],
+            ['ボタン - 再読込', 'toolbutton_file_reload'],
+            ['ボタン - 設定', 'toolbutton_setting'],
+            ['ボタン - 検索', 'toolbutton_search'],
+            ['ボタン - 置換', 'toolbutton_replace'],
+            ['ボタン - エクスポート', 'toolbutton_export'],
+            ['ボタン - 定型文', 'toolbutton_template'],
+            ['ボタン - しおり', 'toolbutton_bookmark'],]
         self.statusbar_elements_dict_converted = {}
-        for i in range(6):
-            l = self.statusbar_elements_dict[i]
+        for i in range(7):
+            try:
+                l = self.statusbar_elements_dict[i]
+                if l == None:
+                    raise KeyError
+            except KeyError:
+                l = []
             self.statusbar_elements_dict_converted[i] = [self.convert_statusbar_elements(val) for val in l]
-            while len(self.statusbar_elements_dict_converted[i]) < 4:
+            while len(self.statusbar_elements_dict_converted[i]) < 5:
                 self.statusbar_elements_dict_converted[i].append('')
 
         self.font_treeview = None
@@ -1468,55 +1640,26 @@ class SettingWindow(Toplevel):
         f3 = Frame(nt, padding=5)
         for i in range(4):
             f3.grid_columnconfigure(i+1, weight=1)
-        statusbar_elements=[None, '文字数カウンター - 1列目', '文字数カウンター - 2列目',
-                            '文字数カウンター - 3列目', '文字数カウンター - 4列目',
-                            '文字数カウンター - 5列目', '文字数カウンター - 6列目',
-                            '文字数カウンター - 7列目', '文字数カウンター - 8列目',
-                            '文字数カウンター - 9列目', '文字数カウンター - 10列目',
-                            '行数カウンター - 1列目', '行数カウンター - 2列目',
-                            '行数カウンター - 3列目', '行数カウンター - 4列目',
-                            '行数カウンター - 5列目', '行数カウンター - 6列目',
-                            '行数カウンター - 7列目', '行数カウンター - 8列目',
-                            '行数カウンター - 9列目', '行数カウンター - 10列目',
-                            'カーソルの現在位置', 'ショートカットキー1',
-                            'ショートカットキー2', 'ショートカットキー3',
-                            '各機能情報', '顔文字',
-                            'ボタン - ファイルを開く', 'ボタン - 上書き保存',
-                            'ボタン - 名前をつけて保存', 'ステータスバー初期メッセージ']
-        self.setting_statusbar_elements_dict = {0: {'var': [], 'menu': []}, 1: {'var': [], 'menu': []}, 2: {'var': [], 'menu': []}, 3: {'var': [], 'menu': []}, 4: {'var': [], 'menu': []}, 5: {'var': [], 'menu': []}}
+        statusbar_elements = [None] + [l[0] for l in self.pair_of_status_bar_elements]
+        toolbar_elements = [None] + [l[0] for l in self.pair_of_tool_bar_elements]
+        self.setting_statusbar_elements_dict = {i: {'var': [], 'menu': []} for i in range(7)}
 
-        Label(f3, text='ツールバー1').grid(row=1, column=0, columnspan=2, sticky=W)
-        Label(f3, text='ツールバー2').grid(row=3, column=0, columnspan=2, sticky=W)
-        Label(f3, text='ステータスバー1').grid(row=5, column=0, columnspan=2, sticky=W)
-        Label(f3, text='ステータスバー2').grid(row=7, column=0, columnspan=2, sticky=W)
-        Label(f3, text='ステータスバー3').grid(row=9, column=0, columnspan=2, sticky=W)
-        Label(f3, text='ステータスバー4').grid(row=11, column=0, columnspan=2, sticky=W)
-        for i in range(24):
-            k = i % 4
-            if i < 4:
-                self.setting_statusbar_elements_dict[4]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[4]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[4]['var'][k], self.statusbar_elements_dict_converted[4][k], *statusbar_elements))
-                self.setting_statusbar_elements_dict[4]['menu'][k].grid(row=2, column=k, padx=5, pady=5, sticky=W+E)
-            elif i < 8:
-                self.setting_statusbar_elements_dict[5]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[5]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[5]['var'][k], self.statusbar_elements_dict_converted[5][k], *statusbar_elements))
-                self.setting_statusbar_elements_dict[5]['menu'][k].grid(row=4, column=k, padx=5, pady=5, sticky=W+E)
-            elif i < 12:
-                self.setting_statusbar_elements_dict[3]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[3]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[3]['var'][k], self.statusbar_elements_dict_converted[3][k], *statusbar_elements))
-                self.setting_statusbar_elements_dict[3]['menu'][k].grid(row=6, column=k, padx=5, pady=5, sticky=W+E)
-            elif i < 16:
-                self.setting_statusbar_elements_dict[2]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[2]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[2]['var'][k], self.statusbar_elements_dict_converted[2][k], *statusbar_elements))
-                self.setting_statusbar_elements_dict[2]['menu'][k].grid(row=8, column=k, padx=5, pady=5, sticky=W+E)
-            elif i < 20:
-                self.setting_statusbar_elements_dict[1]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[1]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[1]['var'][k], self.statusbar_elements_dict_converted[1][k], *statusbar_elements))
-                self.setting_statusbar_elements_dict[1]['menu'][k].grid(row=10, column=k, padx=5, pady=5, sticky=W+E)
-            elif i < 24:
-                self.setting_statusbar_elements_dict[0]['var'].append(StringVar())
-                self.setting_statusbar_elements_dict[0]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[0]['var'][k], self.statusbar_elements_dict_converted[0][k], *statusbar_elements))
-                self.setting_statusbar_elements_dict[0]['menu'][k].grid(row=12, column=k, padx=5, pady=5, sticky=W+E)
+        for i, j in enumerate([4, 5, 6, 3, 2, 1, 0]):
+            row = i*2 + 1
+            if i < 3:
+                text = f'ツールバー{i+1}'
+            else:
+                text = f'ステータスバー{i-2}'
+            Label(f3, text=text).grid(row=row, column=0, columnspan=2, sticky=W)
+            i = (i + 1) * 2
+            for k in range(5):
+                if k < 4:
+                    l = statusbar_elements
+                else:
+                    l = toolbar_elements
+                self.setting_statusbar_elements_dict[j]['var'].append(StringVar())
+                self.setting_statusbar_elements_dict[j]['menu'].append(OptionMenu(f3, self.setting_statusbar_elements_dict[j]['var'][k], self.statusbar_elements_dict_converted[j][k], *l))
+                self.setting_statusbar_elements_dict[j]['menu'][k].grid(row=i, column=k, padx=5, pady=5, sticky=W+E)
 
         # タブ - 機能
         f4 = Frame(nt, padding=5)
@@ -1569,11 +1712,7 @@ backup-{ファイル名}.$epに保存されます
         self.setting_number_of_columns.bind('<<Increment>>', lambda e:reload_setting_column_percentage(e, 'up'))
         self.setting_number_of_columns.bind('<<Decrement>>', lambda e:reload_setting_column_percentage(e, 'down'))
 
-        # 設定ウィンドウの設定
-        self.grab_set()
-        self.focus_set()
-        self.transient(app)
-        app.wait_window(self)
+        self.set_window()
 
     # 設定編集GUIのOKや適用を押した際の動作
     def save(self, e=None, close=False):
@@ -1622,27 +1761,12 @@ backup-{ファイル名}.$epに保存されます
             log.exception(f'invalid value in backup frequency: {e}')
             backup_frequency = self.settings['backup_frequency']
         if themename == '------': themename = self.themename
-        statusbar_method = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
-        for i in range(24):
-            k = i % 4
-            if   i < 4 :
-                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[4]['var'][k].get())
-                if e: statusbar_method[4].append(e)
-            elif i < 8 :
-                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[5]['var'][k].get())
-                if e: statusbar_method[5].append(e)
-            elif i < 12:
-                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[3]['var'][k].get())
-                if e: statusbar_method[3].append(e)
-            elif i < 16:
-                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[2]['var'][k].get())
-                if e: statusbar_method[2].append(e)
-            elif i < 20:
-                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[1]['var'][k].get())
-                if e: statusbar_method[1].append(e)
-            elif i < 24:
-                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[0]['var'][k].get())
-                if e: statusbar_method[0].append(e)
+        statusbar_method = {i: [] for i in range(7)}
+        for i in range(7):
+            for j in range(5):
+                e = self.convert_statusbar_elements(self.setting_statusbar_elements_dict[i]['var'][j].get())
+                if e:
+                    statusbar_method[i].append(e)
 
         # 設定を辞書に格納する
         self.settings['columns']['number'] = number_of_columns
@@ -1699,6 +1823,8 @@ backup-{ファイル名}.$epに保存されます
                         ['OK']).show(app.md_position)
         if close:
             self.close()
+        else:
+            self.set_window()
 
     # フォントファミリー選択ツリービュー
     def setting_font_family_treeview(self, master):
@@ -1727,42 +1853,17 @@ backup-{ファイル名}.$epに保存されます
         return self.font_treeview
 
     def convert_statusbar_elements(self, val: str):
-        l =[['文字数カウンター - 1列目', 'letter_count_1'],
-            ['文字数カウンター - 2列目', 'letter_count_2'],
-            ['文字数カウンター - 3列目', 'letter_count_3'],
-            ['文字数カウンター - 4列目', 'letter_count_4'],
-            ['文字数カウンター - 5列目', 'letter_count_5'],
-            ['文字数カウンター - 6列目', 'letter_count_6'],
-            ['文字数カウンター - 7列目', 'letter_count_7'],
-            ['文字数カウンター - 8列目', 'letter_count_8'],
-            ['文字数カウンター - 9列目', 'letter_count_9'],
-            ['文字数カウンター - 10列目', 'letter_count_10'],
-            ['行数カウンター - 1列目', 'line_count_1'],
-            ['行数カウンター - 2列目', 'line_count_2'],
-            ['行数カウンター - 3列目', 'line_count_3'],
-            ['行数カウンター - 4列目', 'line_count_4'],
-            ['行数カウンター - 5列目', 'line_count_5'],
-            ['行数カウンター - 6列目', 'line_count_6'],
-            ['行数カウンター - 7列目', 'line_count_7'],
-            ['行数カウンター - 8列目', 'line_count_8'],
-            ['行数カウンター - 9列目', 'line_count_9'],
-            ['行数カウンター - 10列目', 'line_count_10'],
-            ['カーソルの現在位置', 'current_place'],
-            ['ショートカットキー1', 'hotkeys1'],
-            ['ショートカットキー2', 'hotkeys2'],
-            ['ショートカットキー3', 'hotkeys3'],
-            ['各機能情報', 'infomation'],
-            ['顔文字', 'kaomoji'],
-            ['ボタン - 新規作成', 'toolbutton_create'],
-            ['ボタン - ファイルを開く', 'toolbutton_open'],
-            ['ボタン - 上書き保存', 'toolbutton_over_write_save'],
-            ['ボタン - 名前をつけて保存', 'toolbutton_save_as'],
-            ['ボタン - 再読込', 'toolbutton_file_reload'],
-            ['ステータスバー初期メッセージ', 'statusbar_message']]
-        for x in l:
+        for x in self.pair_of_status_bar_elements + self.pair_of_tool_bar_elements:
             if val == x[0]: return x[1]
             elif val == x[1]: return x[0]
         return ''
+
+    def set_window(self):
+        # 設定ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
 
     def close(self):
         log.info('---Closed SettingWindow---')
@@ -2313,7 +2414,7 @@ class ExportWindow(Toplevel):
             log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
             return False
         else:
-            log.info(f'Success export {self.file_format.get()}: {self.filepath.get()}')
+            log.info(f'Succeed export {self.file_format.get()}: {self.filepath.get()}')
             # 書き込みを行い成功した場合Trueを返す
             return True
 
@@ -2579,6 +2680,164 @@ class SearchWindow(Toplevel):
             w.tag_remove('search', 1.0, END)
             w.tag_remove('search_selected', 1.0, END)
         self.destroy()
+
+class TemplateWindow(Toplevel):
+    def __init__(self, title="SoroEditor - 定型文", iconphoto='', size=(800, 750), position=None, minsize=None, maxsize=None, resizable=None, transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+        log.info('---Open TemplateWindow---')
+
+        f1 = Frame(self, padding=5)
+        f1.pack(fill=BOTH, expand=True)
+
+        Label(f1, text='定型文を10個まで登録できます。\n右のボタンをクリック、メニューバーから選択、またはショートカットキーで挿入できます。\
+            \nショートカットキーはこのウィンドウを開かず使用できます。').pack()
+
+        f2 = Frame(f1, padding=5)
+        f2.pack(fill=BOTH, expand=True, anchor=CENTER)
+
+        f2_1 = Frame(f2, padding=5)
+        f2_2 = Frame(f2, padding=5)
+        f2_1.place(relx=0.0, rely=0.0, relheight=1.0, relwidth=0.5)
+        f2_2.place(relx=0.5, rely=0.0, relheight=1.0, relwidth=0.5)
+
+        rows = [Frame(f2_1, padding=3) if i < 5 else Frame(f2_2, padding=3) for i in range(10)]
+        for w in rows:
+            w.pack(fill=BOTH)
+
+        buttons = [Button(rows[i], text=f' Alt+{i+1}\nCtrl+{i+1}')
+                    if i != 9
+                    else Button(rows[i], text=' Alt+0\nCtrl+0')
+                    for i in range(10)]
+        for i, w in enumerate(buttons):
+            w.config(command=self.button_clicked(i))
+            w.pack(fill=Y, side=RIGHT)
+
+        self.load()
+        self.texts = [ScrolledText(rows[i], height=4, autohide=True) for i in range(10)]
+        for i, w in enumerate(self.texts):
+            w.pack(fill=X, expand=True)
+            w.insert(1.0, self.templates[i])
+
+        # 変更検知
+        self.bind('<Key>', self.key_pressed)
+
+        # ウィンドウの設定
+        self.focus()
+
+    def button_clicked(self, num):
+        def inner():
+            app.insert_template_to_maintext(num)
+        return inner
+
+    def load(self):
+        try:
+            with open('./settings.yaml', 'rt', encoding='utf-8') as f:
+                self.settings:dict = yaml.safe_load(f)
+        except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
+            error_type = type(e).__name__
+            error_message = str(e)
+            log.error(f"An error of type {error_type} occurred while loading setting file: {error_message}")
+            MessageDialog('設定ファイルの読み込みに失敗したため定型文を利用できません\nsettings.yamlが存在するか確認してください',
+                            'SoroEditor - 定型文').show(app.md_position)
+            self.destroy()
+        else:
+            self.templates = {i: self.settings['templates'][i]
+                                if i in self.settings['templates'].keys()
+                                else ''
+                                for i in range(10)}
+
+    def save(self):
+        # 設定ファイルに更新された辞書を保存する
+        try:
+            app.settings['templates'] = self.templates
+            app.templates = self.templates
+            app.make_menu_templates()
+            with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
+                yaml.dump(self.settings, f, allow_unicode=True)
+        except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
+            error_type = type(e).__name__
+            error_message = str(e)
+            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+        else:
+            log.info('Succeed updating setting file by TemplateWindow')
+
+    def key_pressed(self, e=None):
+        # Entry内のテキストに変更があるか確認する
+        templates = self.get_current_data()
+        if templates != self.templates:
+            self.templates = templates
+            self.settings['templates'] = self.templates
+            self.save()
+
+    def get_current_data(self):
+        return {i: re.sub('(\n|\r|\r\n)$', '', w.get(1.0, END), 1) for i, w in enumerate(self.texts)}
+
+    def close(self):
+        log.info('---Close TemplateWindow---')
+        self.destroy()
+
+
+class BookmarkWindow(Toplevel):
+
+    def __init__(self, title="SoroEditor - しおり", iconphoto='', size=(800, 750), position=None, minsize=None, maxsize=None, resizable=None, transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+        log.info('---Open BookmarkWindow---')
+
+        f1 = Frame(self, padding=5)
+        f1.pack(fill=BOTH, expand=True)
+
+        treeview = Treeview(f1, height=10, show=[], columns=['mark', 'index', 'text'])
+        # スクロールバーを設定
+        vbar = Scrollbar(f1, command=treeview.yview, orient=VERTICAL, bootstyle='rounded')
+        vbar.pack(side=RIGHT, fill=Y)
+        treeview.configure(yscrollcommand=vbar.set)
+        treeview.pack(fill=BOTH, expand=True)
+
+        # 変更検知
+        self.bind('<Key>', self.key_pressed)
+
+        # ウィンドウの設定
+        self.focus()
+
+    def key_pressed(self):
+        pass
+
+    def close(self):
+        log.info('---Close BookmarkWindow---')
+        self.destroy()
+
+
+class Icons:
+    def __init__(self):
+        with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+            theme = data['themename']
+            if not theme or not theme in STANDARD_THEMES.keys():
+                theme = DEFAULT_THEME
+            theme_type = STANDARD_THEMES[theme]['type']
+        if theme_type == 'dark':
+            icon_type = 'white'
+        elif theme_type == 'light':
+            icon_type = 'black'
+        self.note_add = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_create.png')
+        self.file_open = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_open.png')
+        self.save = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_save.png')
+        self.save_as = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_save_as.png')
+        self.reflesh = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/refresh.png')
+        self.undo = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/undo.png')
+        self.redo = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/redo.png')
+        self.bookmark = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/bookmark.png')
+        self.list_ = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/template.png')
+        self.search = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/search.png')
+        self.find_replace = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/replace.png')
+        self.settings = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/settings.png')
+        self.note_export = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/export.png')
 
 
 if __name__ == '__main__':
