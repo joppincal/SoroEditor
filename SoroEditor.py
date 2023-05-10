@@ -3,7 +3,7 @@ SoroEditor - Joppincal
 This software is distributed under the MIT License. See LICENSE for details.
 See ThirdPartyNotices.txt for third party libraries.
 '''
-from collections import deque
+from collections import deque, namedtuple
 import datetime
 import difflib
 import logging
@@ -24,8 +24,8 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.7'
-__projversion__ = '0.2.0'
+__version__ = '0.3.8'
+__projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
 
@@ -73,12 +73,12 @@ class Main(Frame):
                         'recently_files': [],
                         'selection_line_highlight': True,
                         'statusbar_element_settings':
-                            {0: ['statusbar_message'],
-                            1: ['hotkeys2', 'hotkeys3'],
+                            {0: ['hotkeys3', 'statusbar_message'],
+                            1: ['hotkeys2'],
                             2: ['hotkeys1'],
-                            3: ['current_place', 'line_count_1', 'line_count_2', 'line_count_3'],
-                            4: ['toolbutton_open', 'toolbutton_over_write_save', 'toolbutton_file_reload'],
-                            5: [None]},
+                            3: ['current_place'],
+                            4: ['toolbutton_create', 'toolbutton_open', 'toolbutton_save', 'toolbutton_file_reload'],
+                            5: ['toolbutton_bookmark', 'toolbutton_template', 'toolbutton_search', 'toolbutton_replace', 'toolbutton_setting']},
                         'templates':{},
                         'themename': '',
                         'version': __version__,
@@ -120,7 +120,7 @@ class Main(Frame):
             try:
                 self.master.geometry(self.settings['geometry'])
             except tkinter.TclError as e:
-                print(e)
+                log.error(f'Failed to set window size: {e}')
         ## テーマを設定
         self.windowstyle = Style()
         self.windowstyle.theme_use(self.settings['themename'])
@@ -149,7 +149,19 @@ class Main(Frame):
         ## バックアップ頻度
         self.backup_frequency: int = self.settings['backup_frequency']
         ## 定型文
-        self.templates: dict = self.settings['templates']
+        self.templates = {i: self.settings['templates'].get(i, '') for i in range(10)}
+
+        # サブウィンドウを入れる変数
+        self.setting_window = None
+        self.search_window = None
+        self.template_window = None
+        self.bookmark_window = None
+        self.windows = {
+            'setting': self.setting_window,
+            'search': self.search_window,
+            'template': self.template_window,
+            'bookmark': self.bookmark_window,
+        }
 
         self.Icons = Icons()
         self.filepath = ''
@@ -158,7 +170,11 @@ class Main(Frame):
             self.data0[i] = {'text': '', 'title': ''}
         self.data0['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
         self.data0['version'] = __projversion__
+        self.data0['bookmarks'] = []
+        self.data0['use_regex_in_bookmarks'] = False
         self.data = self.data0.copy()
+        self.bookmarks = []
+        self.use_regex_in_bookmarks = False
         self.edit_history = deque([self.data])
         self.undo_history: deque[dict] = deque([])
         self.recently_files: list = self.settings['recently_files']
@@ -222,11 +238,11 @@ class Main(Frame):
         self.make_menu_templates()
         menubar.add_cascade(label='定型文(T)', menu=self.menu_templates, underline=4)
 
-        ## メニューバー - しおり
+        ## メニューバー - 付箋
         self.menu_bookmark = Menu(menubar)
-        self.menu_bookmark.add_command(label='しおり(B)', command=self.open_BookmarkWindow, accelerator='Ctrl+B', underline=4)
+        self.menu_bookmark.add_command(label='付箋(B)', command=self.open_BookmarkWindow, accelerator='Ctrl+B', underline=3)
         self.menu_bookmark.add_separator()
-        menubar.add_cascade(label='しおり(B)', menu=self.menu_bookmark, underline=4)
+        menubar.add_cascade(label='付箋(B)', menu=self.menu_bookmark, underline=3)
 
         ## メニューバー - 設定
         self.menu_option = Menu(menubar)
@@ -246,7 +262,7 @@ class Main(Frame):
         self.master.config(menu = menubar)
 
         # メニューバー関連のキーバインドを設定
-        self.open_last_file_id = self.menu_file_recently.bind_all('<Control-r>', self.open_last_file)
+        self.open_last_file_id = self.master.bind('<Control-r>', self.open_last_file)
 
         # 各パーツを製作
         self.f1 = Frame(self.master, padding=5)
@@ -305,26 +321,27 @@ class Main(Frame):
             return ('label', text)
         ## ショートカットキー
         self.hotkeys1 = ('label', '[Ctrl+O]: 開く  [Ctrl+S]: 上書き保存  [Ctrl+Shift+S]: 名前をつけて保存  [Ctrl+R]: 最後に使ったファイルを開く（起動直後のみ）')
-        self.hotkeys2 = ('label', '[Ctrl+Enter]: 1行追加(下)  [Ctrl+Shift+Enter]: 1行追加(上)  [Ctrl+^]: 検索・置換  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す')
-        self.hotkeys3 = ('label', '[Ctrl+Q][Alt+,]: 左に移る  [Ctrl+W][Alt+.]: 右に移る')
+        self.hotkeys2 = ('label', '[Ctrl+Enter]: 1行追加(下)  [Ctrl+Shift+Enter]: 1行追加(上)  [Ctrl+F]: 検索  [Ctrl+Shift+F]: 置換  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す')
+        self.hotkeys3 = ('label', '[Ctrl+Q][Alt+Q][Alt+,]: 左に移る  [Ctrl+W][Alt+W][Alt+.]: 右に移る')
         ## 各機能情報
         self.infomation = ('label', f'自動保存: {self.do_autosave}, バックアップ: {self.do_backup}')
         ## 顔文字
         self.kaomoji = ('label', choice(['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)']))
         ## ツールボタン
-        self.toolbutton_create = ('button', '新規作成', self.file_create, self.Icons.note_add)
+        self.toolbutton_create = ('button', '新規作成', self.file_create, self.Icons.file_create)
         self.toolbutton_open = ('button', 'ファイルを開く', self.file_open, self.Icons.file_open)
-        self.toolbutton_over_write_save = ('button', '上書き保存', self.file_over_write_save, self.Icons.save)
-        self.toolbutton_save_as = ('button', '名前をつけて保存', self.file_save_as, self.Icons.save_as)
-        self.toolbutton_file_reload = ('button', '再読込', self.file_reload, self.Icons.reflesh)
+        self.toolbutton_save = ('button', '上書き保存', self.file_over_write_save, self.Icons.file_save)
+        self.toolbutton_save_as = ('button', '名前をつけて保存', self.file_save_as, self.Icons.file_save_as)
+        self.toolbutton_file_reload = ('button', '再読込', self.file_reload, self.Icons.refresh)
+        self.toolbutton_project_setting = ('button', 'プロジェクト設定', ProjectFileSettingWindow, self.Icons.project_settings)
         self.toolbutton_setting = ('button', '設定', self.open_SettingWindow, self.Icons.settings)
         self.toolbutton_search = ('button', '検索', self.open_SearchWindow, self.Icons.search)
-        self.toolbutton_replace = ('button', '置換', lambda: self.open_SearchWindow(1), self.Icons.find_replace)
-        self.toolbutton_export = ('button', 'エクスポート', ExportWindow, self.Icons.note_export)
-        self.toolbutton_template = ('button', '定型文', self.open_TemplateWindow, self.Icons.list_)
-        self.toolbutton_bookmark = ('button', 'しおり', self.open_BookmarkWindow, self.Icons.bookmark)
+        self.toolbutton_replace = ('button', '置換', lambda: self.open_SearchWindow(1), self.Icons.replace)
+        self.toolbutton_export = ('button', 'エクスポート', ExportWindow, self.Icons.export)
+        self.toolbutton_template = ('button', '定型文', self.open_TemplateWindow, self.Icons.template)
+        self.toolbutton_bookmark = ('button', '付箋', self.open_BookmarkWindow, self.Icons.bookmark)
         ## 初期ステータスバーメッセージ
-        self.statusbar_message = ('label', 'ステータスバーの表示項目はメニューバーの 設定-ステータスバー から変更できます')
+        self.statusbar_message = ('label', 'ツールバー・ステータスバーの項目は設定-ツールバー・ステータスバー から変更できます')
 
         # 設定ファイルからステータスバーの設定を読み込むメソッド
         def statusbar_element_setting_load(name: str=str):
@@ -339,9 +356,10 @@ class Main(Frame):
             elif name == 'kaomoji': return self.kaomoji
             elif name == 'toolbutton_create': return self.toolbutton_create
             elif name == 'toolbutton_open': return self.toolbutton_open
-            elif name == 'toolbutton_over_write_save': return self.toolbutton_over_write_save
+            elif name == 'toolbutton_save': return self.toolbutton_save
             elif name == 'toolbutton_save_as': return self.toolbutton_save_as
             elif name == 'toolbutton_file_reload': return self.toolbutton_file_reload
+            elif name == 'toolbutton_project_setting': return self.toolbutton_project_setting
             elif name == 'toolbutton_setting': return self.toolbutton_setting
             elif name == 'toolbutton_search': return self.toolbutton_search
             elif name == 'toolbutton_replace': return self.toolbutton_replace
@@ -474,9 +492,11 @@ class Main(Frame):
         self.master.bind('<F5>', self.file_reload)
         self.master.bind('<Control-P>', self.open_SettingWindow)
         self.master.bind('<Control-w>', focus_to_right)
+        self.master.bind('<Alt-w>', focus_to_right)
         self.master.bind('<Alt-.>', focus_to_right)
         self.master.bind('<Alt-Right>', focus_to_right)
         self.master.bind('<Control-q>', focus_to_left)
+        self.master.bind('<Alt-q>', focus_to_left)
         self.master.bind('<Alt-,>', focus_to_left)
         self.master.bind('<Alt-Left>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
@@ -549,13 +569,12 @@ class Main(Frame):
                                                 state=DISABLED, takefocus=NO)
             self.line_number_box = Text(self.f1_1, font=self.font,
                                         width=4,
-                                        spacing3=self.between_lines,
-                                        takefocus=NO)
+                                        spacing3=self.between_lines,)
             self.line_number_box.tag_config('right', justify=RIGHT)
             for i in range(9999):
                 i = i + 1
                 self.line_number_box.insert(END, f'{i}\n', 'right')
-            self.line_number_box.config(state=DISABLED)
+            self.line_number_box.config(state=DISABLED, takefocus=NO)
 
             self.f1_1.pack(fill=Y, side=LEFT, pady=10)
             self.line_number_box_entry.pack(fill=X, expand=False, padx=5, pady=0)
@@ -677,15 +696,11 @@ class Main(Frame):
                         raise(KeyError)
                     data = self.data0.copy()
                     data.update(newdata)
-                    if not 'columns' in data.keys():
-                        data['columns'] = {}
-                    if not 'number' in data['columns'].keys():
-                        data['columns']['number'] = self.settings['columns']['number']
-                    if not 'percentage' in data['columns'].keys():
-                        data['columns']['percentage'] = self.settings['columns']['percentage']
 
                     self.number_of_columns = data['columns']['number']
                     self.column_percentage = [x*0.01 for x in data['columns']['percentage']]
+                    self.bookmarks = data['bookmarks']
+                    self.use_regex_in_bookmarks = data['use_regex_in_bookmarks']
                     for _ in range(10-len(self.column_percentage)):
                         self.column_percentage.append(0)
 
@@ -734,6 +749,8 @@ class Main(Frame):
                     self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file_path_to_open=self.recently_files[4]))
                 except IndexError:
                     pass
+
+                self.make_menu_bookmarks()
 
             except FileNotFoundError as e:
                 log.error(e)
@@ -830,7 +847,7 @@ class Main(Frame):
         '''
         try:
             with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.dump(self.settings, f, allow_unicode=True)
+                yaml.dump(self.settings, f, allow_unicode=True, canonical=True)
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
@@ -938,6 +955,8 @@ class Main(Frame):
             current_data[i]['text'] = self.maintexts[i].get('1.0',END).rstrip('\r\n')
             current_data[i]['title'] = self.entrys[i].get()
         # 設定部分を書き込む
+        current_data['bookmarks'] = self.bookmarks
+        current_data['use_regex_in_bookmarks'] = self.use_regex_in_bookmarks
         current_data['columns'] = {'number': self.number_of_columns, 'percentage': [int(x*100) for x in self.column_percentage]}
         for _ in range(10-len(current_data['columns']['percentage'])):
             current_data['columns']['percentage'].append(0)
@@ -1019,6 +1038,53 @@ class Main(Frame):
 
     def print_history(self, e=None):
         print(self.edit_history)
+
+    def search(self, search_text:str, use_regular_expression=False, title='', entry=None) -> list:
+        if not search_text:
+            return []
+        current_data = self.get_current_data()
+        texts = [current_data[i]['text'] for i in range(10) if current_data[i]['text']]
+        if not use_regular_expression:
+            search_text = re.escape(search_text)
+        results = []
+        try:
+            for line, text in enumerate(texts):
+                newrow_charactors_matches:list[tuple[int, int]] = [(0, 0)]
+                newrow_charactors_matches.extend([m.span() for m in list(re.finditer('\n', text))])
+                search_text_matches:list[tuple[int, int]] = [m.span() for m in list(re.finditer(search_text, text))]
+                # 各行の開始文字数・終了文字数をリスト化する
+                rows_span = [(newrow_charactors_matches[i][1], newrow_charactors_matches[i+1][0]) for i in range(len(newrow_charactors_matches)-1)]
+                rows_span.append((rows_span[-1][1]+1, len(text)))
+                # 検索結果が何行目の何文字目かを確認する
+                for start, stop in search_text_matches:
+                    row_first = -1
+                    for row, t in enumerate(rows_span):
+                        i, j = t
+                        if i <= start <= j:
+                            row_first = row
+                            break
+                    start = start - rows_span[row][0]
+                    row_last = -1
+                    for row, t in enumerate(rows_span):
+                        i, j = t
+                        if i <= stop <= j:
+                            row_last = row
+                            break
+                    stop = stop - rows_span[row][0]
+                    # 結果を追加する
+                    results.append((line, (row_first, row_last), (start, stop)))
+        except re.error:
+            results = []
+            if title and entry:
+                messagedialog = MessageDialog(
+                    '正規表現エラー\n検索内容を確認してください',
+                    title + ' 正規表現エラー',
+                    alert=True,
+                    buttons=['OK'],
+                    parent=entry)
+                messagedialog.show(app.md_position)
+                entry.focus()
+        return results
 
     def cut_copy(self, mode=0):
         '''
@@ -1136,7 +1202,10 @@ class Main(Frame):
                                             underline=1)
 
     def make_menu_bookmarks(self):
-        pass
+        self.menu_bookmark.delete(2, 100)
+        for i, bookmark in enumerate(self.bookmarks[:10], 1):
+            i = i if i < 10 else 0
+            self.menu_bookmark.add_command(label=f'({i}): {bookmark}を検索', underline=1)
 
     def highlight(self):
         '''
@@ -1213,10 +1282,6 @@ class Main(Frame):
             for w in self.textboxes:
                 w.see('0.0')
                 w.see(self.text_place[1])
-                w.see(self.text_place[1])
-                w.see(self.text_place[1])
-                w.see(self.text_place[0])
-                w.see(self.text_place[0])
                 w.see(self.text_place[0])
             self.text_place = (float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
         self.show_cursor_at_bottom_line()
@@ -1389,7 +1454,7 @@ class Main(Frame):
         menu = Menu()
         self.make_menu_edit(menu)
         menu.add_separator()
-        menu.add_cascade(label='しおり(B)', menu=self.menu_bookmark)
+        menu.add_cascade(label='付箋(B)', menu=self.menu_bookmark)
         menu.add_cascade(label='定型文(T)', menu=self.menu_templates)
 
         e.widget.focus_set()
@@ -1397,39 +1462,40 @@ class Main(Frame):
 
     def open_SettingWindow(self, *_):
         '''重複を防ぐ'''
-        try:
-            self.settingwindow
-        except AttributeError:
-            self.settingwindow = None
-        if self.settingwindow == None or not self.settingwindow.winfo_exists():
-            self.settingwindow = SettingWindow()
+        return self.open_sub_window('setting')
 
     def open_SearchWindow(self, mode=0):
         '''重複を防ぐ'''
-        try:
-            self.searchwindow
-        except AttributeError:
-            self.searchwindow = None
-        if self.searchwindow == None or not self.searchwindow.winfo_exists():
-            self.searchwindow = SearchWindow(mode)
+        return self.open_sub_window('search')
 
     def open_TemplateWindow(self, *_):
         '''重複を防ぐ'''
-        try:
-            self.templatewindow
-        except AttributeError:
-            self.templatewindow = None
-        if self.templatewindow == None or not self.templatewindow.winfo_exists():
-            self.templatewindow = TemplateWindow()
+        return self.open_sub_window('template')
 
     def open_BookmarkWindow(self, *_):
         '''重複を防ぐ'''
-        try:
-            self.bookmarkwindow
-        except AttributeError:
-            self.bookmarkwindow = None
-        if self.bookmarkwindow == None or not self.bookmarkwindow.winfo_exists():
-            self.bookmarkwindow = BookmarkWindow()
+        return self.open_sub_window('bookmark')
+
+    def open_sub_window(self, sub_window:str):
+        '''重複を防ぐ'''
+        def get_window(sub_window):
+            return {
+                'setting': SettingWindow,
+                'search': SearchWindow,
+                'template': TemplateWindow,
+                'bookmark': BookmarkWindow,
+            }[sub_window]
+
+        if self.windows[sub_window] is None or not self.windows[sub_window].winfo_exists():
+            self.windows[sub_window] = get_window(sub_window)()
+        else:
+            self.windows[sub_window].focus()
+
+    def close_sub_window(self, sub_window:Toplevel):
+        def inner(*_):
+            log.info(f'---Close {sub_window.__class__.__name__}---')
+            sub_window.destroy()
+        return inner
 
 
 class SettingWindow(Toplevel):
@@ -1438,6 +1504,8 @@ class SettingWindow(Toplevel):
     '''
     def __init__(self, e=None, title="SoroEditor - 設定", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
@@ -1484,15 +1552,16 @@ class SettingWindow(Toplevel):
         self.pair_of_tool_bar_elements = [
             ['ボタン - 新規作成', 'toolbutton_create'],
             ['ボタン - ファイルを開く', 'toolbutton_open'],
-            ['ボタン - 上書き保存', 'toolbutton_over_write_save'],
+            ['ボタン - 上書き保存', 'toolbutton_save'],
             ['ボタン - 名前をつけて保存', 'toolbutton_save_as'],
             ['ボタン - 再読込', 'toolbutton_file_reload'],
+            ['ボタン - プロジェクト設定', 'toolbutton_project_setting'],
             ['ボタン - 設定', 'toolbutton_setting'],
             ['ボタン - 検索', 'toolbutton_search'],
             ['ボタン - 置換', 'toolbutton_replace'],
             ['ボタン - エクスポート', 'toolbutton_export'],
             ['ボタン - 定型文', 'toolbutton_template'],
-            ['ボタン - しおり', 'toolbutton_bookmark'],]
+            ['ボタン - 付箋', 'toolbutton_bookmark'],]
         self.statusbar_elements_dict_converted = {}
         for i in range(7):
             try:
@@ -1653,7 +1722,7 @@ class SettingWindow(Toplevel):
             Label(f3, text=text).grid(row=row, column=0, columnspan=2, sticky=W)
             i = (i + 1) * 2
             for k in range(5):
-                if k < 4:
+                if j < 4:
                     l = statusbar_elements
                 else:
                     l = toolbar_elements
@@ -1810,7 +1879,7 @@ backup-{ファイル名}.$epに保存されます
         # 設定ファイルに更新された辞書を保存する
         try:
             with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.dump(self.settings, f, allow_unicode=True)
+                yaml.dump(self.settings, f, allow_unicode=True, canonical=True)
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
@@ -1865,13 +1934,12 @@ backup-{ファイル名}.$epに保存されます
         self.transient(app)
         app.wait_window(self)
 
-    def close(self):
-        log.info('---Closed SettingWindow---')
-        self.destroy()
 
 class ProjectFileSettingWindow(Toplevel):
     def __init__(self, title="SoroEditor - プロジェクト設定", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
@@ -1955,10 +2023,6 @@ class ProjectFileSettingWindow(Toplevel):
         app.make_text_editor()
         if close:
             self.close()
-
-    def close(self):
-        log.info('---Close ProjectFileSettingWindow---')
-        self.destroy()
 
 
 class ThirdPartyNoticesWindow(Toplevel):
@@ -2155,6 +2219,8 @@ class ExportWindow(Toplevel):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
         log.info('---Open ExportWindow---')
+
+        self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
@@ -2418,10 +2484,6 @@ class ExportWindow(Toplevel):
             # 書き込みを行い成功した場合Trueを返す
             return True
 
-    def close(self):
-        log.info('---Close ExportWindow---')
-        self.destroy()
-
 
 class SearchWindow(Toplevel):
 
@@ -2503,58 +2565,12 @@ class SearchWindow(Toplevel):
     def search_button_clicked(self):
         self.next_button_clicked()
 
-    def search(self, search_text:str) -> list:
-        if not search_text:
-            return []
-        current_data = app.get_current_data()
-        texts = [current_data[i]['text'] for i in range(10) if current_data[i]['text']]
-        if not self.use_regular_expression.get():
-            search_text = re.escape(search_text)
-        results = []
-        try:
-            for line, text in enumerate(texts):
-                newrow_charactors_matches:list[tuple[int, int]] = [(0, 0)]
-                newrow_charactors_matches.extend([m.span() for m in list(re.finditer('\n', text))])
-                search_text_matches:list[tuple[int, int]] = [m.span() for m in list(re.finditer(search_text, text))]
-                # 各行の開始文字数・終了文字数をリスト化する
-                rows_span = [(newrow_charactors_matches[i][1], newrow_charactors_matches[i+1][0]) for i in range(len(newrow_charactors_matches)-1)]
-                rows_span.append((rows_span[-1][1]+1, len(text)))
-                # 検索結果が何行目の何文字目かを確認する
-                for start, stop in search_text_matches:
-                    row_first = -1
-                    for row, t in enumerate(rows_span):
-                        i, j = t
-                        if i <= start <= j:
-                            row_first = row
-                            break
-                    start = start - rows_span[row][0]
-                    row_last = -1
-                    for row, t in enumerate(rows_span):
-                        i, j = t
-                        if i <= stop <= j:
-                            row_last = row
-                            break
-                    stop = stop - rows_span[row][0]
-                    # 結果を追加する
-                    results.append((line, (row_first, row_last), (start, stop)))
-        except re.error:
-            results = []
-            messagedialog = MessageDialog(
-                '正規表現エラー\n検索内容を確認してください',
-                self.win_title + ' 正規表現エラー',
-                alert=True,
-                buttons=['OK'],
-                parent=self.entry)
-            messagedialog.show(app.md_position)
-            self.entry.focus()
-        return results
-
     def loop_make_results(self):
         self.make_results()
         self.after(100, self.loop_make_results)
 
     def make_results(self) -> bool:
-        results = deque(self.search(self.text_in_entry.get()))
+        results = deque(app.search(self.text_in_entry.get(), self.use_regular_expression.get(), self.win_title, self.entry))
         if results and set(results) == set(self.results):
             return False
         for w in app.maintexts:
@@ -2675,19 +2691,27 @@ class SearchWindow(Toplevel):
         self.prev_button.focus()
 
     def close(self):
-        log.info('---Close SearchWindow---')
         for w in app.maintexts:
             w.tag_remove('search', 1.0, END)
             w.tag_remove('search_selected', 1.0, END)
-        self.destroy()
+        app.close_sub_window(self)()
 
 class TemplateWindow(Toplevel):
     def __init__(self, title="SoroEditor - 定型文", iconphoto='', size=(800, 750), position=None, minsize=None, maxsize=None, resizable=None, transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
+        self.close = app.close_sub_window(self)
+
         self.protocol('WM_DELETE_WINDOW', self.close)
 
         log.info('---Open TemplateWindow---')
+
+        self.is_topmost = BooleanVar()
+
+        self.menubar = Menu(self)
+        self.menubar.add_checkbutton(label='最前面(T)', variable=self.is_topmost, underline=4)
+        self.menubar.add_command(label='閉じる(Q)', command=self.destroy, underline=4)
+        self.config(menu=self.menubar)
 
         f1 = Frame(self, padding=5)
         f1.pack(fill=BOTH, expand=True)
@@ -2697,6 +2721,11 @@ class TemplateWindow(Toplevel):
 
         f2 = Frame(f1, padding=5)
         f2.pack(fill=BOTH, expand=True, anchor=CENTER)
+
+        # チェックボタンを設定
+        self.is_topmost.trace_add('write', self.on_is_topmost_changed)
+        self.is_topmost.set(True)
+        Checkbutton(f1, text='最前面[Ctrl+T]', variable=self.is_topmost, padding=10).pack(side=BOTTOM, anchor=W)
 
         f2_1 = Frame(f2, padding=5)
         f2_2 = Frame(f2, padding=5)
@@ -2722,7 +2751,10 @@ class TemplateWindow(Toplevel):
             w.insert(1.0, self.templates[i])
 
         # 変更検知
-        self.bind('<Key>', self.key_pressed)
+        self.bind('<KeyRelease>', self.key_released)
+
+        self.bind('<Escape>', self.close)
+        self.bind('<Control-t>', lambda _: self.is_topmost.set(not self.is_topmost.get()))
 
         # ウィンドウの設定
         self.focus()
@@ -2756,7 +2788,7 @@ class TemplateWindow(Toplevel):
             app.templates = self.templates
             app.make_menu_templates()
             with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.dump(self.settings, f, allow_unicode=True)
+                yaml.dump(self.settings, f, allow_unicode=True, canonical=True)
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
@@ -2764,7 +2796,7 @@ class TemplateWindow(Toplevel):
         else:
             log.info('Succeed updating setting file by TemplateWindow')
 
-    def key_pressed(self, e=None):
+    def key_released(self, e=None):
         # Entry内のテキストに変更があるか確認する
         templates = self.get_current_data()
         if templates != self.templates:
@@ -2772,48 +2804,206 @@ class TemplateWindow(Toplevel):
             self.settings['templates'] = self.templates
             self.save()
 
+    def on_is_topmost_changed(self, *_):
+        if self.is_topmost.get():
+            self.attributes('-topmost', True)
+            self.menubar.entryconfig(0, label='✓最前面(T)', underline=5)
+        else:
+            self.attributes('-topmost', False)
+            self.menubar.entryconfig(0, label='　最前面(T)', underline=4)
+
     def get_current_data(self):
         return {i: re.sub('(\n|\r|\r\n)$', '', w.get(1.0, END), 1) for i, w in enumerate(self.texts)}
-
-    def close(self):
-        log.info('---Close TemplateWindow---')
-        self.destroy()
 
 
 class BookmarkWindow(Toplevel):
 
-    def __init__(self, title="SoroEditor - しおり", iconphoto='', size=(800, 750), position=None, minsize=None, maxsize=None, resizable=None, transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="SoroEditor - 付箋", iconphoto='', size=(900, 750), position=None, minsize=None, maxsize=None, resizable=None, transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
         log.info('---Open BookmarkWindow---')
 
-        f1 = Frame(self, padding=5)
+        self.is_topmost = BooleanVar()
+
+        self.menubar = Menu(self)
+        self.menubar.add_checkbutton(label='最前面(T)', variable=self.is_topmost, underline=4)
+        self.menubar.add_command(label='更新(R)', command=self.reset, underline=3)
+        self.menubar.add_command(label='付箋設定(O)', command=self.bookmark_setting, underline=5)
+        self.menubar.add_command(label='閉じる(Q)', command=self.close, underline=4)
+        self.config(menu=self.menubar)
+
+        self.is_topmost.trace_add('write', self.on_is_topmost_changed)
+        self.is_topmost.set(True)
+
+        bottombar = Frame(self, padding=10)
+        bottombar.pack(fill=X, side=BOTTOM)
+        Button(bottombar, text='更新[F5]', command=self.reset, takefocus=NO).pack(side=RIGHT, anchor=E, padx=10)
+        Button(bottombar, text='付箋設定[Ctrl+P]', command=lambda: self.bookmark_setting(self), takefocus=NO).pack(side=RIGHT, anchor=E, padx=10)
+        # チェックボタンを設定
+        Checkbutton(bottombar, text='最前面[Ctrl+T]', variable=self.is_topmost).pack(side=LEFT, padx=10)
+
+        f1 = Frame(self, padding=15)
         f1.pack(fill=BOTH, expand=True)
 
-        treeview = Treeview(f1, height=10, show=[], columns=['mark', 'index', 'text'])
-        # スクロールバーを設定
-        vbar = Scrollbar(f1, command=treeview.yview, orient=VERTICAL, bootstyle='rounded')
-        vbar.pack(side=RIGHT, fill=Y)
-        treeview.configure(yscrollcommand=vbar.set)
-        treeview.pack(fill=BOTH, expand=True)
+        # ツリービューの設定
+        self.treeview = Treeview(f1, height=10, show=[HEADINGS], columns=['#data', 'mark', 'index', 'text'])
+        self.treeview.column('#data',width=0, stretch='no')
+        self.treeview.column('mark', anchor=W, width=150, stretch='no')
+        self.treeview.column('index', anchor=W, width=100, stretch='no')
+        self.treeview.column('text', anchor=W, width=500)
+        self.treeview.heading('mark', text='付箋', anchor=W, command=lambda: self.change_column_width('mark'))
+        self.treeview.heading('index', text='位置', anchor=W, command=lambda: self.change_column_width('index'))
+        self.treeview.heading('text', text='テキスト', anchor=W, command=lambda: self.change_column_width('text'))
+        self.insert_recode()
 
-        # 変更検知
-        self.bind('<Key>', self.key_pressed)
+        # スクロールバーを設定
+        vbar = Scrollbar(f1, command=self.treeview.yview, orient=VERTICAL, bootstyle='rounded')
+        vbar.pack(side=RIGHT, fill=Y)
+        self.treeview.configure(yscrollcommand=vbar.set)
+        hbar = Scrollbar(f1, command=self.treeview.xview, orient=HORIZONTAL, bootstyle='rounded')
+        hbar.pack(side=BOTTOM, fill=X)
+        self.treeview.configure(xscrollcommand=hbar.set)
+        self.treeview.pack(fill=BOTH, expand=True)
+
+        self.treeview.bind('<<TreeviewSelect>>', self.select)
+        self.bind('<Escape>', self.close)
+        self.bind('<F5>', self.reset)
+        self.bind('<Control-p>', self.bookmark_setting)
+        self.bind('<Control-t>', lambda _: self.is_topmost.set(not self.is_topmost.get()))
 
         # ウィンドウの設定
+        self.treeview.focus_set()
+
+    def insert_recode(self):
+        if not app.bookmarks:
+            self.treeview.insert('', END, values=('', '付箋なし', ''), tags='font')
+            return
+        TreeviewValues = namedtuple('TreeviewValues', ['place', 'mark', 'index', 'text'])
+        for mark in app.bookmarks:
+            mark_index = app.search(mark, app.use_regex_in_bookmarks)
+            if not mark_index:
+                self.treeview.insert('', END, values=('', mark, '', '該当なし'), tags='font')
+                continue
+            for i, place in enumerate(mark_index):
+                index = f'{place[0]+1}列{place[1][0]+1}行'
+                texts = [widget.get(float(place[1][0]+1), str(float(place[1][0]+1))+' lineend')
+                            for widget in app.maintexts]
+                texts = ' | '.join(texts)
+                new_values = TreeviewValues(place, mark, index, texts) if i == 0 else TreeviewValues(place, '', index, texts)
+                self.treeview.insert('', END, values=new_values)
+
+    def reset(self, *_):
+        self.treeview.delete(*self.treeview.get_children())
+        self.insert_recode()
+
+    def select(self, *_):
+        selected_item = self.treeview.selection()
+
+        if not selected_item:
+            return
+        place = re.findall('\d+', self.treeview.item(selected_item)['values'][0])
+        if not place:
+            return
+
+        maintexts_index = int(place[0])
+        line = float(place[1])+1
+
+        app.align_the_lines(line, line, False)
+
+        self.attributes('-topmost', True)
+        app.maintexts[maintexts_index].focus()
+        app.maintexts[maintexts_index].mark_set(INSERT, line)
+        app.highlight()
+        self.attributes('-topmost', self.is_topmost.get())
+        self.treeview.focus_set()
+
+    def change_column_width(self, widget):
+        widget_widthes = {
+            'mark': [150, 50],
+            'index': [100, 50],
+            'text': [500, 50],
+        }
+        clicked_widget_widthes = widget_widthes[widget]
+        current_width = self.treeview.column(widget, 'width')
+
+        if current_width == clicked_widget_widthes[0]:
+            new_width = clicked_widget_widthes[1]
+        elif current_width == clicked_widget_widthes[1]:
+            new_width = clicked_widget_widthes[0]
+            if widget == 'text':
+                self.treeview.column(widget, stretch=True)
+        else:
+            new_width = clicked_widget_widthes[1]
+            self.treeview.column(widget, stretch=False)
+
+        self.treeview.column(widget, width=new_width)
+
+    def on_is_topmost_changed(self, *_):
+        if self.is_topmost.get():
+            self.attributes('-topmost', True)
+            self.menubar.entryconfig(0, label='✓最前面(T)', underline=5)
+        else:
+            self.attributes('-topmost', False)
+            self.menubar.entryconfig(0, label='　最前面(T)', underline=4)
+
+    def bookmark_setting(self, *_):
+        window = Toplevel(master=self)
+        # ウィンドウの作成
+        window.title('SoroEditor - 付箋')
+        window.geometry('600x600')
+        menubar = Menu(window)
+        menubar.add_command(label='閉じる(Q)', command=window.destroy, underline=4)
+        window.config(menu=menubar)
+        f1 = Frame(window, padding=10)
+        f1.pack(fill=BOTH, expand=True)
+        Label(f1, text='この画面で設定したテキストは【付箋】として、付箋ウィンドウで確認できます。\n'\
+            '付箋が貼られた部分には付箋ウィンドウやショートカットキーで簡単にジャンプできます。\n'\
+                'ブックマークはファイルごとに設定されます。\n'\
+                    '下のテキストボックスの1行ごとが付箋になります。', padding=10).pack()
+        # チェックボタンを設定
+        def on_use_regex_changed(*_):
+            app.use_regex_in_bookmarks = use_regex.get()
+        use_regex = BooleanVar(value=app.use_regex_in_bookmarks)
+        use_regex.trace_add('write', on_use_regex_changed)
+        use_regex.set(False)
+        Checkbutton(f1, text='正規表現を用いる[Ctrl+R]', variable=use_regex, padding=10).pack(side=BOTTOM, anchor=W)
+        # テキストボックスを設定
+        text = ScrolledText(f1, font=app.font)
+        bookmarks = '\n'.join(app.bookmarks)
+        text.insert(END, bookmarks)
+        text.pack(fill=BOTH, expand=True)
+        textwidget:ScrolledText|Text = text
+        for widget in text.winfo_children():
+            if widget.winfo_class() == 'Text':
+                textwidget = widget
+
+        def save(_):
+            new_bookmarks = [s for s in text.get(1.0, END).splitlines() if s]
+            if set(new_bookmarks) != set(app.bookmarks) or app.use_regex_in_bookmarks == use_regex.get():
+                app.bookmarks = new_bookmarks
+                app.make_menu_bookmarks()
+                app.use_regex_in_bookmarks = use_regex.get()
+
+        window.bind('<KeyRelease>', save)
+        window.bind('<Button>', save)
+        window.bind('<Escape>', lambda _: window.destroy())
+        window.bind('<Control-r>', lambda _: use_regex.set(not use_regex.get()))
+
+        window.grab_set()
+        textwidget.focus()
+        if self.is_topmost.get():
+            window.attributes('-topmost', True)
+        self.wait_window(window)
+        self.lift()
         self.focus()
-
-    def key_pressed(self):
-        pass
-
-    def close(self):
-        log.info('---Close BookmarkWindow---')
-        self.destroy()
 
 
 class Icons:
+    '''Stores the path of the icon image'''
     def __init__(self):
         with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
             data = yaml.safe_load(f)
@@ -2825,20 +3015,23 @@ class Icons:
             icon_type = 'white'
         elif theme_type == 'light':
             icon_type = 'black'
-        self.note_add = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_create.png')
-        self.file_open = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_open.png')
-        self.save = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_save.png')
-        self.save_as = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/file_save_as.png')
-        self.reflesh = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/refresh.png')
-        self.undo = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/undo.png')
-        self.redo = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/redo.png')
-        self.bookmark = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/bookmark.png')
-        self.list_ = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/template.png')
-        self.search = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/search.png')
-        self.find_replace = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/replace.png')
-        self.settings = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/settings.png')
-        self.note_export = tkinter.PhotoImage(file=f'./src/icon/{icon_type}/export.png')
+        self.file_create = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
+        self.file_open = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_open.png'))
+        self.file_save = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save.png'))
+        self.file_save_as = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save_as.png'))
+        self.refresh = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/refresh.png'))
+        self.undo = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/undo.png'))
+        self.redo = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/redo.png'))
+        self.bookmark = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/bookmark.png'))
+        self.template = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/template.png'))
+        self.search = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/search.png'))
+        self.replace = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/replace.png'))
+        self.settings = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/settings.png'))
+        self.project_settings = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/project_settings.png'))
+        self.export = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/export.png'))
 
+    def __make_image_path(self, p) -> str:
+        return os.path.join(os.path.dirname(__file__), p)
 
 if __name__ == '__main__':
     log_setting()
