@@ -24,7 +24,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.8'
+__version__ = '0.3.9'
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -242,6 +242,7 @@ class Main(Frame):
         self.menu_bookmark = Menu(menubar)
         self.menu_bookmark.add_command(label='付箋(B)', command=self.open_BookmarkWindow, accelerator='Ctrl+B', underline=3)
         self.menu_bookmark.add_separator()
+        self.make_menu_bookmarks()
         menubar.add_cascade(label='付箋(B)', menu=self.menu_bookmark, underline=3)
 
         ## メニューバー - 設定
@@ -336,7 +337,7 @@ class Main(Frame):
         self.toolbutton_project_setting = ('button', 'プロジェクト設定', ProjectFileSettingWindow, self.Icons.project_settings)
         self.toolbutton_setting = ('button', '設定', self.open_SettingWindow, self.Icons.settings)
         self.toolbutton_search = ('button', '検索', self.open_SearchWindow, self.Icons.search)
-        self.toolbutton_replace = ('button', '置換', lambda: self.open_SearchWindow(1), self.Icons.replace)
+        self.toolbutton_replace = ('button', '置換', lambda: self.open_SearchWindow('1'), self.Icons.replace)
         self.toolbutton_export = ('button', 'エクスポート', ExportWindow, self.Icons.export)
         self.toolbutton_template = ('button', '定型文', self.open_TemplateWindow, self.Icons.template)
         self.toolbutton_bookmark = ('button', '付箋', self.open_BookmarkWindow, self.Icons.bookmark)
@@ -660,6 +661,8 @@ class Main(Frame):
         if not self.file_close():
             return
         self.filepath = ''
+        self.bookmarks = []
+        self.use_regex_in_bookmarks = False
         self.data = self.data0.copy()
         self.edit_history = deque([self.data])
         self.undo_history = deque([])
@@ -1178,6 +1181,14 @@ class Main(Frame):
             self.insert_template_to_maintext(num)
         return inner
 
+    def open_SearchWindow_with_bookmarks(self, bookmark):
+        self.open_SearchWindow('0', bookmark)
+
+    def menu_bookmarks_clicked(self, bookmark):
+        def inner(*_):
+            self.open_SearchWindow_with_bookmarks(bookmark)
+        return inner
+
     def make_menu_edit(self, parent:Menu):
         parent.add_command(label='切り取り(T)', command=lambda: self.cut_copy(), accelerator='Ctrl+X', underline=5)
         parent.add_command(label='コピー(C)', command=lambda: self.cut_copy(1), accelerator='Ctrl+C', underline=4)
@@ -1203,9 +1214,13 @@ class Main(Frame):
 
     def make_menu_bookmarks(self):
         self.menu_bookmark.delete(2, 100)
-        for i, bookmark in enumerate(self.bookmarks[:10], 1):
+        if not self.bookmarks:
+            self.menu_bookmark.add_command(label='付箋なし')
+        for i, bookmark in enumerate(self.bookmarks, 1):
             i = i if i < 10 else 0
-            self.menu_bookmark.add_command(label=f'({i}): {bookmark}を検索', underline=1)
+            label = f'({i}): {bookmark}を検索'
+            command = self.menu_bookmarks_clicked(bookmark)
+            self.menu_bookmark.add_command(label=label, command=command, underline=1)
 
     def highlight(self):
         '''
@@ -1464,9 +1479,11 @@ class Main(Frame):
         '''重複を防ぐ'''
         return self.open_sub_window('setting')
 
-    def open_SearchWindow(self, mode=0):
+    def open_SearchWindow(self, mode='0', searchtext=''):
         '''重複を防ぐ'''
-        return self.open_sub_window('search')
+        if not mode in ('0', '1'):
+            mode = '0'
+        return self.open_sub_window('search', mode, searchtext)
 
     def open_TemplateWindow(self, *_):
         '''重複を防ぐ'''
@@ -1476,7 +1493,7 @@ class Main(Frame):
         '''重複を防ぐ'''
         return self.open_sub_window('bookmark')
 
-    def open_sub_window(self, sub_window:str):
+    def open_sub_window(self, sub_window:str, *args):
         '''重複を防ぐ'''
         def get_window(sub_window):
             return {
@@ -1487,7 +1504,7 @@ class Main(Frame):
             }[sub_window]
 
         if self.windows[sub_window] is None or not self.windows[sub_window].winfo_exists():
-            self.windows[sub_window] = get_window(sub_window)()
+            self.windows[sub_window] = get_window(sub_window)(*args)
         else:
             self.windows[sub_window].focus()
 
@@ -2505,6 +2522,8 @@ class SearchWindow(Toplevel):
             mode = 0
         self.title(self.win_title)
 
+        searchtext = iconphoto
+
         if mode == 0:
             log.info('Search Mode')
         if mode == 1:
@@ -2561,6 +2580,11 @@ class SearchWindow(Toplevel):
         # ウィンドウの設定
         self.geometry('+{0}+{1}'.format(*app.md_position))
         self.transient(app)
+
+        # 検索文字列が指定されている場合、検索する
+        if searchtext:
+            self.text_in_entry.set(searchtext)
+            self.use_regular_expression.set(app.use_regex_in_bookmarks)
 
     def search_button_clicked(self):
         self.next_button_clicked()
