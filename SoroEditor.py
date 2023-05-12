@@ -24,7 +24,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.9'
+__version__ = '0.3.10'
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -2513,20 +2513,20 @@ class SearchWindow(Toplevel):
 
         if self.title() == '0':
             self.win_title = 'SoroEditor - 検索'
-            mode = 0
+            self.mode = 0
         if self.title() == '1':
             self.win_title = 'SoroEditor - 置換'
-            mode = 1
+            self.mode = 1
         else:
             self.win_title = 'SoroEditor - 検索'
-            mode = 0
+            self.mode = 0
         self.title(self.win_title)
 
         searchtext = iconphoto
 
-        if mode == 0:
+        if self.mode == 0:
             log.info('Search Mode')
-        if mode == 1:
+        if self.mode == 1:
             log.info('Replace Mode')
 
         self.config(padx=10, pady=10)
@@ -2547,7 +2547,7 @@ class SearchWindow(Toplevel):
             bootstyle='round-toggle'
             ).pack(padx=10,pady=0,anchor=W)
 
-        if mode == 1:
+        if self.mode == 1:
             Label(self, text='置換').pack(padx=10, pady=0, anchor=W)
             self.text_in_entry2 = StringVar()
             self.entry2 = Entry(self, textvariable=self.text_in_entry2, width=50)
@@ -2556,19 +2556,26 @@ class SearchWindow(Toplevel):
             self.entry2.pack(fill=X, padx=10, pady=10)
 
         f2 = Frame(self, padding=5)
+        f3 = Frame(self, padding=5)
         self.search_button = Button(f2, text='検索', command=self.search_button_clicked)
         self.search_button.pack(side=RIGHT, padx=2)
-        if mode == 1:
-            self.replace_next_button = Button(f2, text='置換して次へ', command=self.replace_button_clicked)
+        if self.mode == 1:
+            self.replace_next_button = Button(f3, text='置換して次へ', command=self.replace_button_clicked)
             self.replace_next_button.pack(side=RIGHT, padx=2)
-            self.replace_prev_button = Button(f2, text='置換して前へ', command=lambda: self.replace_button_clicked(-1))
+            self.replace_prev_button = Button(f3, text='置換して前へ', command=lambda: self.replace_button_clicked(-1))
             self.replace_prev_button.pack(side=RIGHT, padx=2)
-            self.replace_all_button = Button(f2, text='すべて置換', command=lambda: self.replace_button_clicked(1))
+            self.replace_all_button = Button(f3, text='すべて置換', command=lambda: self.replace_button_clicked(1))
             self.replace_all_button.pack(side=RIGHT, padx=2)
         self.next_button = Button(f2, text='次へ', command=self.next_button_clicked, bootstyle='secondary')
         self.next_button.pack(side=RIGHT, padx=2)
         self.prev_button = Button(f2, text='前へ', command=self.prev_button_clicked, bootstyle='secondary')
         self.prev_button.pack(side=RIGHT, padx=2)
+        if self.mode == 0:
+            self.switch_button = Button(f2, text='置換へ', command=self.switch_mode)
+        elif self.mode == 1:
+            self.switch_button = Button(f2, text='検索へ', command=self.switch_mode)
+        self.switch_button.pack(side=RIGHT, padx=2)
+        f3.pack(side=BOTTOM, fill=X, anchor=S)
         f2.pack(side=BOTTOM, fill=X, anchor=S)
 
         self.results = deque([])
@@ -2713,6 +2720,15 @@ class SearchWindow(Toplevel):
             self.results.rotate(1)
         self.select()
         self.prev_button.focus()
+
+    def switch_mode(self):
+        self.destroy()
+        if self.mode == 0:
+            mode = '1'
+        elif self.mode == 1:
+            mode = '0'
+        searchtext = self.text_in_entry.get()
+        app.open_SearchWindow(mode, searchtext)
 
     def close(self):
         for w in app.maintexts:
