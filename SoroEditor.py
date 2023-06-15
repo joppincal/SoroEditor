@@ -4,6 +4,7 @@ This software is distributed under the MIT License. See LICENSE for details.
 See ThirdPartyNotices.txt for third party libraries.
 '''
 from collections import deque, namedtuple
+import csv
 import datetime
 import difflib
 import logging
@@ -24,7 +25,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.10'
+__version__ = '0.3.11'
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -65,6 +66,7 @@ class Main(Frame):
                         'backup': True,
                         'backup_frequency': 300000,
                         'between_lines': 10,
+                        'button_style': 'icon_with_text',
                         'columns': {'number': 3, 'percentage': [15, 55, 30]},
                         'display_line_number': True,
                         'font': {'family': 'nomal', 'size': 12},
@@ -124,6 +126,10 @@ class Main(Frame):
         ## テーマを設定
         self.windowstyle = Style()
         self.windowstyle.theme_use(self.settings['themename'])
+        ## ボタンの外観設定
+        self.button_style: str = self.settings['button_style']
+        if not self.button_style in ('icon_with_text', 'icon_only', 'text_only'):
+            self.button_style = 'icon_with_text'
         ## フォント設定
         self.font = font.Font(family=self.settings['font']['family'], size=self.settings['font']['size'])
         ## 列数
@@ -197,6 +203,7 @@ class Main(Frame):
         self.menu_file.add_command(label='上書き保存(S)', command=self.file_over_write_save, accelerator='Ctrl+S', underline=6)
         self.menu_file.add_command(label='名前をつけて保存(A)', command=self.file_save_as, accelerator='Ctrl+Shift+S', underline=9)
         self.menu_file.add_command(label='エクスポート(E)', command=ExportWindow, accelerator='Ctrl+Shift+E', underline=7)
+        self.menu_file.add_command(label='インポート(I)', command=ImportWindow, accelerator='Ctrl+Shift+I', underline=6)
         self.menu_file.add_command(label='プロジェクト設定(F)', command=ProjectFileSettingWindow, underline=9)
         self.menu_file.add_command(label='再読込(W)', command=self.make_text_editor, accelerator='F5', underline=4)
 
@@ -215,7 +222,7 @@ class Main(Frame):
         self.menu_file.add_cascade(label='最近使用したファイル(R)', menu=self.menu_file_recently, underline=11)
 
         self.menu_file.add_separator()
-        self.menu_file.add_command(label='終了(Q)', command=lambda:self.file_close(shouldExit=True), accelerator='Alt+F4', underline=3)
+        self.menu_file.add_command(label='終了(Q)', command=lambda:self.file_close(exit_on_completion=True), accelerator='Alt+F4', underline=3)
         menubar.add_cascade(label='ファイル(F)', menu=self.menu_file, underline=5)
 
         ## メニューバー - 編集
@@ -327,7 +334,8 @@ class Main(Frame):
         ## 各機能情報
         self.infomation = ('label', f'自動保存: {self.do_autosave}, バックアップ: {self.do_backup}')
         ## 顔文字
-        self.kaomoji = ('label', choice(['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)']))
+        kaomoji_list = ['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)', '(●▲●)', '(○▽○)', '(´・ω・)つ旦', ' (●ﾟ◇ﾟ●)', "（'ω`）"]
+        self.kaomoji = ('label', choice(kaomoji_list))
         ## ツールボタン
         self.toolbutton_create = ('button', '新規作成', self.file_create, self.Icons.file_create)
         self.toolbutton_open = ('button', 'ファイルを開く', self.file_open, self.Icons.file_open)
@@ -338,43 +346,64 @@ class Main(Frame):
         self.toolbutton_setting = ('button', '設定', self.open_SettingWindow, self.Icons.settings)
         self.toolbutton_search = ('button', '検索', self.open_SearchWindow, self.Icons.search)
         self.toolbutton_replace = ('button', '置換', lambda: self.open_SearchWindow('1'), self.Icons.replace)
+        self.toolbutton_import = ('button', 'インポート', ImportWindow, self.Icons.import_)
         self.toolbutton_export = ('button', 'エクスポート', ExportWindow, self.Icons.export)
         self.toolbutton_template = ('button', '定型文', self.open_TemplateWindow, self.Icons.template)
         self.toolbutton_bookmark = ('button', '付箋', self.open_BookmarkWindow, self.Icons.bookmark)
+        self.toolbutton_undo = ('button', '取り消し', self.undo, self.Icons.undo)
+        self.toolbutton_repeat = ('button', '取り消しを戻す', self.repeat, self.Icons.repeat)
         ## 初期ステータスバーメッセージ
         self.statusbar_message = ('label', 'ツールバー・ステータスバーの項目は設定-ツールバー・ステータスバー から変更できます')
 
         # 設定ファイルからステータスバーの設定を読み込むメソッド
         def statusbar_element_setting_load(name: str=str):
-            if   re.compile(r'letter_count_\d+').search(name): return(letter_count(int(re.search(r'\d+', name).group()) - 1))
-            elif re.compile(r'line_count_\d+').search(name): return(line_count(int(re.search(r'\d+', name).group()) - 1))
-            elif re.compile(r'line_count_debug_\d+').search(name): return(line_count_debug(int(re.search(r'\d+', name).group()) - 1))
-            elif name == 'current_place': return current_place()
-            elif name == 'hotkeys1': return self.hotkeys1
-            elif name == 'hotkeys2': return self.hotkeys2
-            elif name == 'hotkeys3': return self.hotkeys3
-            elif name == 'infomation': return self.infomation
-            elif name == 'kaomoji': return self.kaomoji
-            elif name == 'toolbutton_create': return self.toolbutton_create
-            elif name == 'toolbutton_open': return self.toolbutton_open
-            elif name == 'toolbutton_save': return self.toolbutton_save
-            elif name == 'toolbutton_save_as': return self.toolbutton_save_as
-            elif name == 'toolbutton_file_reload': return self.toolbutton_file_reload
-            elif name == 'toolbutton_project_setting': return self.toolbutton_project_setting
-            elif name == 'toolbutton_setting': return self.toolbutton_setting
-            elif name == 'toolbutton_search': return self.toolbutton_search
-            elif name == 'toolbutton_replace': return self.toolbutton_replace
-            elif name == 'toolbutton_export': return self.toolbutton_export
-            elif name == 'toolbutton_template': return self.toolbutton_template
-            elif name == 'toolbutton_bookmark': return self.toolbutton_bookmark
-            elif name == 'statusbar_message': return self.statusbar_message
+            if re.compile(r'letter_count_\d+').search(name):
+                return(letter_count(int(re.search(r'\d+', name).group()) - 1))
+            if re.compile(r'line_count_\d+').search(name):
+                return(line_count(int(re.search(r'\d+', name).group()) - 1))
+            if re.compile(r'line_count_debug_\d+').search(name):
+                return(line_count_debug(int(re.search(r'\d+', name).group()) - 1))
+            pairs = {
+                'current_place': current_place(),
+                'hotkeys1': self.hotkeys1,
+                'hotkeys2': self.hotkeys2,
+                'hotkeys3': self.hotkeys3,
+                'infomation': self.infomation,
+                'kaomoji': self.kaomoji,
+                'toolbutton_create': self.toolbutton_create,
+                'toolbutton_open': self.toolbutton_open,
+                'toolbutton_save': self.toolbutton_save,
+                'toolbutton_save_as': self.toolbutton_save_as,
+                'toolbutton_file_reload': self.toolbutton_file_reload,
+                'toolbutton_project_setting': self.toolbutton_project_setting,
+                'toolbutton_setting': self.toolbutton_setting,
+                'toolbutton_search': self.toolbutton_search,
+                'toolbutton_replace': self.toolbutton_replace,
+                'toolbutton_import': self.toolbutton_import,
+                'toolbutton_export': self.toolbutton_export,
+                'toolbutton_template': self.toolbutton_template,
+                'toolbutton_bookmark': self.toolbutton_bookmark,
+                'toolbutton_undo': self.toolbutton_undo,
+                'toolbutton_repeat': self.toolbutton_repeat,
+                'statusbar_message': self.statusbar_message,
+            }
+            method = pairs.get(name)
+            if method:
+                return method
 
         # ステータスバー作成メソッド
-        def make_statusbar_element(elementtype=None, text=None, commmand=None, image=None):
+        def make_statusbar_element(elementtype=None, text=None, commmand=None, image=None, textvariable=None):
             if elementtype == 'label':
                 return Label(text=text)
             if elementtype == 'button':
-                button = Button(text=text, command=commmand, image=image, takefocus=False, compound=LEFT)
+                if self.button_style == 'icon_only':
+                    compound = None
+                elif self.button_style == 'text_only':
+                    compound = None
+                    image = None
+                else: # icon_with_textの場合及びそのほか不適切な文字列の場合
+                    compound = LEFT
+                button = Button(text=text, command=commmand, image=image, takefocus=False, compound=compound, textvariable=textvariable)
                 if self.windowstyle.theme_use() in  [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'light']:
                     button.config(bootstyle='light')
                 elif self.windowstyle.theme_use() in [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'dark']:
@@ -509,6 +538,7 @@ class Main(Frame):
         self.master.bind('<Control-Y>', self.print_history)
         self.master.bind('<F1>', lambda _: HelpWindow())
         self.master.bind('<Control-E>', lambda _: ExportWindow())
+        self.master.bind('<Control-I>', lambda _: ImportWindow())
         self.master.bind('<Control-f>', self.open_SearchWindow)
         self.master.bind('<Control-F>', lambda _: self.open_SearchWindow('1'))
         self.master.bind('<Control-t>', self.open_TemplateWindow)
@@ -627,7 +657,7 @@ class Main(Frame):
         try:
             self.textboxes.append(self.line_number_box)
         except AttributeError as e:
-            print(e)
+            pass
 
         self.align_number_of_rows()
 
@@ -883,14 +913,14 @@ class Main(Frame):
         except IndexError:
             pass
 
-    def file_close(self, shouldExit=False) -> bool:
+    def ask_file_close(self, exit_on_completion=False) -> bool:
         '''
-        ファイルを閉じる際のメソッド
-        ファイルが閉じられた場合はTrueを、閉じられなかった場合はFalseを返す
+        ファイルを閉じるか使用者に確認するメソッド
+        ファイルを閉じる場合はTrueを、中止する場合はFalseを返す
         '''
         current_data = self.get_current_data()
 
-        if shouldExit:
+        if exit_on_completion:
             message = '更新内容が保存されていません。アプリを終了しますか。'
             title = 'SoroEditor - 終了確認'
             buttons=['保存して終了:success', '保存せず終了:danger', 'キャンセル']
@@ -900,24 +930,39 @@ class Main(Frame):
             buttons=['保存して変更:success', '保存せず変更:danger', 'キャンセル']
 
         if self.data == current_data:
-            if shouldExit:
-                self.master.destroy()
             return True
         if self.data != current_data:
             messagedialog = MessageDialog(message=message, title=title, buttons=buttons)
             messagedialog.show(self.md_position)
             if messagedialog.result in ('保存せず終了', '保存せず変更'):
-                if shouldExit:
-                    self.master.destroy()
                 return True
             if messagedialog.result in ('保存して終了', '保存して変更'):
                 if self.file_over_write_save():
-                    if shouldExit:
-                        self.master.destroy()
                     return True
             if messagedialog.result == ('キャンセル', None):
                 pass
             return False
+
+    def file_close(self, exit_on_completion=False, need_confirmation=True) -> bool:
+        '''
+        ファイルを閉じるメソッド
+        ファイルが閉じられた場合はTrueを、閉じられなかった場合はFalseを返す
+        '''
+        if need_confirmation:
+            if not self.ask_file_close(exit_on_completion):
+                return False
+
+        self.filepath = ''
+        self.bookmarks = []
+        self.use_regex_in_bookmarks = False
+        self.column_percentage = [x*0.01 for x in self.settings['columns']['percentage']]
+        self.data = self.data0.copy()
+        self.edit_history = deque([self.data])
+        self.undo_history = deque([])
+        self.make_text_editor()
+        if exit_on_completion:
+            self.master.destroy()
+        return True
 
     def file_reload(self, e=None):
         first_data = self.data
@@ -928,6 +973,54 @@ class Main(Frame):
     def open_last_file(self, e=None):
         if not self.filepath:
             self.file_open(file_path_to_open=self.recently_files[0])
+
+    def import_from_csv(self, e=None, mode=0, filepath=None, encoding='utf-8', delimiter=','):
+        '''
+        mode:int[0, 1]
+            - mode=0: CSVの1行目をタイトルとする
+            - mode=1: すべて本文としてインポートする
+        '''
+        if not filepath:
+            filepath = filedialog.askopenfilename(
+                title='CSV形式のファイルを選択',
+                initialdir=self.initialdir,
+                defaultextension='csv',
+                filetypes=(('CSVファイル', 'csv'), ('その他', '.*'))
+                )
+        try:
+            with open(filepath, 'rt', encoding=encoding, newline='') as f:
+                reader = csv.reader(f, delimiter=delimiter)
+                data = []
+                for row in reader:
+                    data.append(row)
+        except FileNotFoundError:
+            pass
+        except PermissionError:
+            pass
+        except UnicodeDecodeError:
+            pass
+        except csv.Error:
+            pass
+        except ValueError:
+            pass
+        else:
+            self.file_create()
+            newdata = self.data0.copy()
+            if mode == 0:
+                for j, row in enumerate(data):
+                    for i, text in enumerate(row):
+                        if j == 0:
+                            newdata[i]['title'] = text
+                        else:
+                            newdata[i]['text'] += text
+                            newdata[i]['text'] += '\n'
+            if mode == 1:
+                for row in data:
+                    for i, text in enumerate(row):
+                        newdata[i]['text'] += text
+                        newdata[i]['text'] += '\n'
+            self.data = newdata
+            self.make_text_editor()
 
     # 以下、エディターの編集に関するメソッド
     def letter_count(self, obj:ScrolledText|Text|str=''):
@@ -1533,6 +1626,7 @@ class SettingWindow(Toplevel):
         number_of_columns = self.settings['columns']['number']
         percentage_of_columns = self.settings['columns']['percentage']
         self.themename = self.settings['themename']
+        self.button_style = self.settings['button_style']
         self.font_family = self.settings['font']['family']
         if self.font_family == 'nomal':
             self.font_family = font.nametofont("TkDefaultFont").actual()['family']
@@ -1565,7 +1659,8 @@ class SettingWindow(Toplevel):
             ['ショートカットキー3', 'hotkeys3'],
             ['各機能情報', 'infomation'],
             ['顔文字', 'kaomoji'],
-            ['ステータスバー初期メッセージ', 'statusbar_message']]
+            ['ステータスバー初期メッセージ', 'statusbar_message'],
+            ]
         self.pair_of_tool_bar_elements = [
             ['ボタン - 新規作成', 'toolbutton_create'],
             ['ボタン - ファイルを開く', 'toolbutton_open'],
@@ -1576,9 +1671,13 @@ class SettingWindow(Toplevel):
             ['ボタン - 設定', 'toolbutton_setting'],
             ['ボタン - 検索', 'toolbutton_search'],
             ['ボタン - 置換', 'toolbutton_replace'],
+            ['ボタン - インポート', 'toolbutton_import'],
             ['ボタン - エクスポート', 'toolbutton_export'],
             ['ボタン - 定型文', 'toolbutton_template'],
-            ['ボタン - 付箋', 'toolbutton_bookmark'],]
+            ['ボタン - 付箋', 'toolbutton_bookmark'],
+            ['ボタン - 取り消し', 'toolbutton_undo'],
+            ['ボタン - 取り消しを戻す', 'toolbutton_repeat'],
+            ]
         self.statusbar_elements_dict_converted = {}
         for i in range(7):
             try:
@@ -1721,6 +1820,12 @@ class SettingWindow(Toplevel):
         self.setting_theme = StringVar()
         self.setting_theme_menu = OptionMenu(lf4, self.setting_theme, self.themename, *theme_names)
         self.setting_theme_menu.pack(side=LEFT)
+        ### ボタンスタイル
+        Label(lf4, text='  *ボタンスタイル: ').pack(side=LEFT)
+        button_styles = ['icon_with_text', 'icon_only', 'text_only']
+        self.setting_button_style = StringVar()
+        self.setting_button_style_menu = OptionMenu(lf4, self.setting_button_style, self.button_style, *button_styles)
+        self.setting_button_style_menu.pack(side=LEFT)
 
         # タブ - ステータスバー
         f3 = Frame(nt, padding=5)
@@ -1831,6 +1936,7 @@ backup-{ファイル名}.$epに保存されます
             between_lines = self.setitngs['between_lines']
         wrap = self.setting_wrap.get()
         themename = self.setting_theme.get()
+        button_style = self.setting_button_style.get()
         display_line_number = self.setting_display_line_number.get()
         selection_line_highlight = self.setting_selection_line_highlight.get()
         geometry = self.setting_geometry.get()
@@ -1862,6 +1968,7 @@ backup-{ファイル名}.$epに保存されます
         self.settings['between_lines'] = between_lines
         self.settings['wrap'] = wrap
         self.settings['themename'] = themename
+        self.settings['button_style'] = button_style
         self.settings['display_line_number'] = display_line_number
         self.settings['statusbar_element_settings'] = statusbar_method
         self.settings['selection_line_highlight'] = selection_line_highlight
@@ -2230,6 +2337,105 @@ class AboutWindow(Toplevel):
         app.wait_window(self)
 
 
+class ImportWindow(Toplevel):
+    def __init__(self, title="SoroEditor - インポート", iconphoto='', size=(500, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+        super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        log.info('---Open ImportWindow---')
+
+        self.close = app.close_sub_window(self)
+
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+        self.current_data = app.get_current_data()
+
+        f = Frame(self, padding=10)
+        f.pack(fill=BOTH, expand=True)
+
+        self.f1 = Frame(f, padding=5)
+        self.f1.pack(side=TOP, fill=X)
+
+        Label(self.f1, text='ファイル形式: ').grid(row=0, column=0, sticky=E)
+        self.file_format = StringVar(value='CSV')
+        file_formats = ['CSV', 'TSV']
+        OptionMenu(self.f1, self.file_format, self.file_format.get(), *file_formats).grid(row=0, column=1, sticky=EW)
+
+        Label(self.f1, text='文字コード: ').grid(row=1, column=0, sticky=E)
+
+        Label(self.f1, text='文字コード: ').grid(row=1, column=0, sticky=E)
+        self.encoding = StringVar(value='UTF-8')
+        self.encoding.trace_add('write', self.set_optionmenu_title)
+        encodings = ['UTF-8', 'Shift-JIS']
+        OptionMenu(self.f1, self.encoding, self.encoding.get(), *encodings).grid(row=1, column=1, sticky=EW)
+
+        self.set_optionmenu_title()
+
+        Separator(self.f1).grid(row=3, column=0, columnspan=2, sticky=EW)
+
+        Label(self.f1, text='ファイル: ').grid(row=4, column=0, sticky=E)
+        self.filepath = StringVar(value="P:\My Video\編集データ\台本\看取ってください、私のマスター！.csv")
+        self.filepath_label = Label(self.f1, textvariable=self.filepath, wraplength=350)
+        self.filepath_label.grid(row=4, column=1, sticky=EW)
+        Button(self.f1, text='ファイル変更', command=self.change_filepath).grid(row=5, column=1, sticky=E)
+
+        self.f1.grid_columnconfigure(1, weight=1)
+        self.f1.grid_rowconfigure(0, pad=10)
+        self.f1.grid_rowconfigure(1, pad=10)
+        self.f1.grid_rowconfigure(2, pad=10)
+        self.f1.grid_rowconfigure(3, pad=10)
+        self.f1.grid_rowconfigure(4, pad=10)
+
+        f2 = Frame(f, padding=(5, 5))
+        Button(f2, text='キャンセル', command=self.close, bootstyle=SECONDARY).pack(side=RIGHT, padx=2)
+        Button(f2, text='インポート', command=self.import_).pack(side=RIGHT, padx=2)
+        Separator(f2).pack(fill=X)
+        f2.pack(side=BOTTOM, fill=X, anchor=S)
+
+        # ウィンドウの設定
+        self.grab_set()
+        self.focus_set()
+        self.transient(app)
+        app.wait_window(self)
+
+    def set_optionmenu_title(self, *_):
+        file_format = self.file_format.get()
+        Label(self.f1, text='タイトル: ').grid(row=2, column=0, sticky=E)
+        self.title = StringVar(value=f'{file_format}の1行目をタイトルとする')
+        titles = [f'{file_format}の1行目をタイトルとする', f'{file_format}の1行目も本文とする']
+        OptionMenu(self.f1, self.title, self.title.get(), *titles).grid(row=2, column=1, sticky=EW)
+
+    def change_filepath(self):
+        filepath = filedialog.askopenfilename(
+            defaultextension='csv',
+            filetypes=(['CSVファイル', '.csv'], ['TSVファイル', '.tsv'], ['その他', '.*']),
+            initialdir=app.initialdir,
+            title='インポートするファイルを選択'
+            )
+        if filepath:
+            self.filepath.set(filepath)
+        else:
+            return
+
+    def import_(self):
+        filepath = self.filepath.get()
+        file_format = self.file_format.get()
+        encoding = self.encoding.get()
+        title = self.title.get()
+        delimiter = ','
+        mode = 0
+
+        if file_format == 'CSV':
+            delimiter = ','
+        if file_format == 'TSV':
+            delimiter = '\t'
+        if title == f'{file_format}の1行目をタイトルとする':
+            mode = 0
+        if title == f'{file_format}の1行目も本文とする':
+            mode = 1
+
+        app.import_from_csv(mode=mode, filepath=filepath, encoding=encoding, delimiter=delimiter)
+
+
 class ExportWindow(Toplevel):
 
     def __init__(self, title="SoroEditor - エクスポート", iconphoto='', size=(1000, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
@@ -2246,17 +2452,17 @@ class ExportWindow(Toplevel):
         f = Frame(self, padding=10)
         f.pack(fill=BOTH, expand=True)
 
-        self.f1 = Frame(f, padding=5)
-        Label(self.f1, text='ファイル形式').pack(side=LEFT, padx=2)
+        f1 = Frame(f, padding=5)
+        Label(f1, text='ファイル形式').pack(side=LEFT, padx=2)
         self.file_format = StringVar(value='CSV')
         file_formats = ['CSV', 'TSV', 'テキスト', 'テキスト(Shift-JIS)']
-        OptionMenu(self.f1, self.file_format, self.file_format.get(), *file_formats, command=self.make_setting_frame).pack(side=LEFT, padx=2)
-        self.shift_jis_alert = Label(self.f1)
+        OptionMenu(f1, self.file_format, self.file_format.get(), *file_formats, command=self.make_setting_frame).pack(side=LEFT, padx=2)
+        self.shift_jis_alert = Label(f1)
         self.shift_jis_alert.pack(side=LEFT, padx=10)
-        self.f1.pack(fill=X)
+        f1.pack(fill=X)
 
         f2 = Frame(f, padding=(5, 5))
-        Button(f2, text='キャンセル', command=self.destroy, bootstyle=SECONDARY).pack(side=RIGHT, padx=2)
+        Button(f2, text='キャンセル', command=self.close, bootstyle=SECONDARY).pack(side=RIGHT, padx=2)
         Button(f2, text='出力', command=self.export).pack(side=RIGHT, padx=2)
         Separator(f2).pack(fill=X)
         f2.pack(side=BOTTOM, fill=X, anchor=S)
@@ -2424,14 +2630,14 @@ class ExportWindow(Toplevel):
         data_length = len(data)
 
         # ファイルフォーマットに応じて区切り文字を設定する
-        separator = {'CSV': ',', 'TSV': '\t'}.get(self.file_format.get())
+        delimiter = {'CSV': ',', 'TSV': '\t'}.get(self.file_format.get())
 
         # ヘッダー行を追加する
         if self.include_title_in_output.get():
             # ヘッダー行のデータを取得する
             header = [data[i][0] for i in range(data_length)]
             # ヘッダー行を出力データに追加する
-            output_data += f'{separator}'.join(header) + '\n'
+            output_data += f'{delimiter}'.join(header) + '\n'
 
         # データ行を追加する
         # 最大の行数を計算する
@@ -2448,7 +2654,7 @@ class ExportWindow(Toplevel):
                     cell_data = text_rows[i]
                 row_data.append(cell_data)
                 # 1つの行のデータを出力データに追加する
-            output_data += f'{separator}'.join(row_data) + '\n'
+            output_data += f'{delimiter}'.join(row_data) + '\n'
 
         # 出力するデータを返す
         return output_data
@@ -2481,14 +2687,14 @@ class ExportWindow(Toplevel):
                 return False
         # エンコード方法を設定する
         if self.file_format.get() == 'テキスト(Shift-JIS)':
-            encodeing = 'cp932'
+            encoding = 'cp932'
         elif self.file_format.get() in ['CSV', 'TSV']:
-            encodeing = 'utf-8-sig'
+            encoding = 'utf-8-sig'
         else:
-            encodeing = 'utf-8'
+            encoding = 'utf-8'
         # ファイルを作成し、書き込む
         try:
-            with open(self.filepath.get(), mode='wt', encoding=encodeing, errors='replace') as f:
+            with open(self.filepath.get(), mode='wt', encoding=encoding, errors='replace') as f:
                 f.write(data)
         except PermissionError as e:
             log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
@@ -3061,7 +3267,7 @@ class Icons:
         self.file_save_as = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save_as.png'))
         self.refresh = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/refresh.png'))
         self.undo = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/undo.png'))
-        self.redo = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/redo.png'))
+        self.repeat = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/repeat.png'))
         self.bookmark = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/bookmark.png'))
         self.template = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/template.png'))
         self.search = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/search.png'))
@@ -3069,6 +3275,7 @@ class Icons:
         self.settings = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/settings.png'))
         self.project_settings = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/project_settings.png'))
         self.export = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/export.png'))
+        self.import_ = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/import.png'))
 
     def __make_image_path(self, p) -> str:
         return os.path.join(os.path.dirname(__file__), p)
