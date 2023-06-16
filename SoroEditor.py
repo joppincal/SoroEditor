@@ -13,8 +13,7 @@ import os
 from random import choice
 import re
 import sys
-import tkinter
-from tkinter import BooleanVar, IntVar, StringVar, filedialog, font
+from tkinter import BooleanVar, IntVar, StringVar, PhotoImage, TclError, filedialog, font
 import webbrowser
 from ttkbootstrap import Button, Checkbutton, Entry, Frame, Label, Labelframe,\
     Menu, Notebook, OptionMenu, PanedWindow, Radiobutton, Scrollbar, Separator, Spinbox, \
@@ -25,7 +24,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 import yaml
 
-__version__ = '0.3.11'
+__version__ = '0.4.0'
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -121,7 +120,7 @@ class Main(Frame):
         else:
             try:
                 self.master.geometry(self.settings['geometry'])
-            except tkinter.TclError as e:
+            except TclError as e:
                 log.error(f'Failed to set window size: {e}')
         ## テーマを設定
         self.windowstyle = Style()
@@ -482,7 +481,7 @@ class Main(Frame):
             widget = self.master.focus_get()
             print(widget, 'has focus')
         def focus_to_right(e):
-            if type(e.widget) == tkinter.Text:
+            if type(e.widget) == Text:
                 next_text_index = self.maintexts.index(e.widget)+1
                 if next_text_index >= len(self.maintexts): next_text_index = 0
                 next_text = self.maintexts[next_text_index]
@@ -490,7 +489,7 @@ class Main(Frame):
                 next_text.mark_set(INSERT, insert)
                 next_text.focus_set()
         def focus_to_left(e):
-            if type(e.widget) == tkinter.Text:
+            if type(e.widget) == Text:
                 prev_text_index = self.maintexts.index(e.widget)-1
                 prev_text = self.maintexts[prev_text_index]
                 insert = e.widget.index(INSERT)
@@ -799,7 +798,7 @@ class Main(Frame):
                 try:
                     for _ in range(5):
                         self.menu_file_recently.delete(0)
-                except tkinter.TclError:
+                except TclError:
                     pass
                 try:
                     if self.filepath:
@@ -1216,7 +1215,7 @@ class Main(Frame):
         widget_class = widget.winfo_class()
         try:
             t = self.clipboard_get()
-        except tkinter.TclError:
+        except TclError:
             return
         if widget_class == 'Text':
             if widget.tag_ranges(SEL):
@@ -1248,7 +1247,7 @@ class Main(Frame):
             mode=0: 上に追加
             mode=1: 下に追加
         '''
-        if type(e.widget) == tkinter.Text:
+        if type(e.widget) == Text:
 
             self.set_text_widget_editable(mode=1)
 
@@ -1997,7 +1996,7 @@ backup-{ファイル名}.$epに保存されます
             for w in app.textboxes:
                 w.config(wrap=wrap, spacing2=between_lines)
             app.make_text_editor()
-        except tkinter.TclError as e:
+        except TclError as e:
             log.error(f'Failed to write to the settigs dict: {e}')
 
         # 設定ファイルに更新された辞書を保存する
@@ -3261,21 +3260,21 @@ class Icons:
             icon_type = 'white'
         elif theme_type == 'light':
             icon_type = 'black'
-        self.file_create = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
-        self.file_open = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_open.png'))
-        self.file_save = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save.png'))
-        self.file_save_as = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save_as.png'))
-        self.refresh = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/refresh.png'))
-        self.undo = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/undo.png'))
-        self.repeat = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/repeat.png'))
-        self.bookmark = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/bookmark.png'))
-        self.template = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/template.png'))
-        self.search = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/search.png'))
-        self.replace = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/replace.png'))
-        self.settings = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/settings.png'))
-        self.project_settings = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/project_settings.png'))
-        self.export = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/export.png'))
-        self.import_ = tkinter.PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/import.png'))
+        self.file_create = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
+        self.file_open = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_open.png'))
+        self.file_save = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save.png'))
+        self.file_save_as = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save_as.png'))
+        self.refresh = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/refresh.png'))
+        self.undo = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/undo.png'))
+        self.repeat = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/repeat.png'))
+        self.bookmark = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/bookmark.png'))
+        self.template = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/template.png'))
+        self.search = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/search.png'))
+        self.replace = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/replace.png'))
+        self.settings = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/settings.png'))
+        self.project_settings = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/project_settings.png'))
+        self.export = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/export.png'))
+        self.import_ = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/import.png'))
 
     def __make_image_path(self, p) -> str:
         return os.path.join(os.path.dirname(__file__), p)
