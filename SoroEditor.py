@@ -3,6 +3,7 @@ SoroEditor - Joppincal
 This software is distributed under the MIT License. See LICENSE for details.
 See ThirdPartyNotices.txt for third party libraries.
 '''
+from PIL import Image, ImageTk
 from collections import deque, namedtuple
 import csv
 import datetime
@@ -1606,6 +1607,9 @@ class Main(Frame):
             sub_window.destroy()
         return inner
 
+    def set_icon_sub_window(self, sub_window:Toplevel):
+        sub_window.iconphoto(False, Icons().icon)
+
 
 class SettingWindow(Toplevel):
     '''
@@ -1617,6 +1621,8 @@ class SettingWindow(Toplevel):
         self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
+
+        app.set_icon_sub_window(self)
 
         log.info('---Open SettingWindow---')
         # 設定ファイルの読み込み
@@ -2066,6 +2072,8 @@ class ProjectFileSettingWindow(Toplevel):
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
+        app.set_icon_sub_window(self)
+
         log.info('---Open ProjectFileSettingWindow---')
         if app.get_current_data() != app.data:
             self.withdraw()
@@ -2152,6 +2160,8 @@ class ThirdPartyNoticesWindow(Toplevel):
     def __init__(self, title="SoroEditor - ライセンス情報", iconphoto='', size=(1200, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
+        app.set_icon_sub_window(self)
+
         text = __thirdpartynotices__
         familys = font.families(self)
         if 'Consolas' in familys: family = 'Consolas'
@@ -2187,6 +2197,8 @@ class ThirdPartyNoticesWindow(Toplevel):
 class HelpWindow(Toplevel):
     def __init__(self, title="SoroEditor - ヘルプ", iconphoto='', size=(600, 800), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        app.set_icon_sub_window(self)
 
         f = Frame(self, padding=5)
         f.pack(fill=BOTH, expand=True)
@@ -2300,12 +2312,19 @@ Ctrl+W, Alt+>:    右の列に移動\n''', 'text')
 
 
 class AboutWindow(Toplevel):
-    def __init__(self, title="SoroEditorについて", iconphoto='', size=(600, 500), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
+    def __init__(self, title="SoroEditorについて", iconphoto='', size=(550, 700), position=None, minsize=None, maxsize=None, resizable=(False, False), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
+
+        app.set_icon_sub_window(self)
 
         frame = Frame(self, padding=5)
         frame.pack(fill=BOTH, expand=True)
         main = Text(frame)
+
+        icon = Image.open('src/icon/icon.png')
+        icon = icon.resize((300, 300))
+        icon = ImageTk.PhotoImage(icon)
+        iconlabel = Label(self, image=icon)
 
         main.tag_config('title', justify=CENTER, spacing2=10, font=font.Font(size=15, weight='bold'))
         main.tag_config('text', justify=CENTER, spacing2=10, font=font.Font(size=12, weight='normal'))
@@ -2317,8 +2336,9 @@ class AboutWindow(Toplevel):
         main.tag_config('homepage')
         main.tag_bind('homepage', '<Button-1>', lambda _: webbrowser.open_new(homepage))
 
-        main.insert(END, 'ここにアイコンを表示\n')
-        main.insert(END, 'そろエディタ\nSoroEditor\n', 'title')
+        main.insert(END, '\nそろエディタ\nSoroEditor\n', 'title')
+        main.window_create(END, window=iconlabel, pady=30)
+        main.tag_add('title', iconlabel)
         main.insert(END, f'\nバージョン: {__version__}\n', 'text')
         main.insert(END, f'プロジェクトファイルバージョン: {__projversion__}\n', 'text')
         main.insert(END, '\nGithub: ', 'text')
@@ -2345,6 +2365,8 @@ class ImportWindow(Toplevel):
         self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
+
+        app.set_icon_sub_window(self)
 
         self.current_data = app.get_current_data()
 
@@ -2445,6 +2467,8 @@ class ExportWindow(Toplevel):
         self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
+
+        app.set_icon_sub_window(self)
 
         self.current_data = app.get_current_data()
 
@@ -2716,6 +2740,8 @@ class SearchWindow(Toplevel):
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
+        app.set_icon_sub_window(self)
+
         if self.title() == '0':
             self.win_title = 'SoroEditor - 検索'
             self.mode = 0
@@ -2949,6 +2975,8 @@ class TemplateWindow(Toplevel):
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
+        app.set_icon_sub_window(self)
+
         log.info('---Open TemplateWindow---')
 
         self.is_topmost = BooleanVar()
@@ -3069,6 +3097,8 @@ class BookmarkWindow(Toplevel):
         self.close = app.close_sub_window(self)
 
         self.protocol('WM_DELETE_WINDOW', self.close)
+
+        app.set_icon_sub_window(self)
 
         log.info('---Open BookmarkWindow---')
 
@@ -3260,6 +3290,7 @@ class Icons:
             icon_type = 'white'
         elif theme_type == 'light':
             icon_type = 'black'
+        self.icon = PhotoImage(file='src/icon/icon.png')
         self.file_create = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
         self.file_open = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_open.png'))
         self.file_save = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save.png'))
@@ -3283,6 +3314,7 @@ if __name__ == '__main__':
     log_setting()
     log.info('===Start Application===')
     root = Window(title='SoroEditor', minsize=(800, 500))
+    root.iconphoto(False, Icons().icon)
     app = Main(master=root)
     app.mainloop()
     log.info('===Close Application===')
