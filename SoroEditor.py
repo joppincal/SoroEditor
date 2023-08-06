@@ -74,6 +74,12 @@ class Main(Frame):
                         'ms_align_the_lines': 50,
                         'recently_files': [],
                         'selection_line_highlight': True,
+                        'search_engines': {
+                            'Google': 'https://www.google.com/search?q=%s',
+                            'Bing': 'https://www.bing.com/search?q=%s',
+                            'Yahoo!Japan': 'https://search.yahoo.co.jp/search?p=%s',
+                            'Wikipedia ja': 'http://ja.wikipedia.org/wiki/%s'
+                            },
                         'statusbar_element_settings':
                             {0: ['hotkeys3', 'statusbar_message'],
                             1: ['hotkeys2'],
@@ -156,6 +162,8 @@ class Main(Frame):
         self.backup_frequency: int = self.settings['backup_frequency']
         ## 定型文
         self.templates = {i: self.settings['templates'].get(i, '') for i in range(10)}
+        ## 検索エンジン
+        self.search_engines: dict = self.settings['search_engines']
 
         # サブウィンドウを入れる変数
         self.setting_window = None
@@ -235,6 +243,9 @@ class Main(Frame):
 
         self.menu_search.add_command(label='検索(S)', command=self.open_SearchWindow, accelerator='Ctrl+F', underline=3)
         self.menu_search.add_command(label='置換(R)', command=lambda: self.open_SearchWindow('1'), accelerator='Ctrl+Shift+F', underline=3)
+        for name, url in self.search_engines.items():
+            self.menu_search.add_command(label=name+'で検索', command=self.search_on_web(url), underline=0)
+
 
         menubar.add_cascade(label='検索(S)', menu=self.menu_search, underline=3)
 
@@ -1135,6 +1146,34 @@ class Main(Frame):
     def print_history(self, e=None):
         print(self.edit_history)
 
+    def search_on_web(self, search_engine_url):
+        '''
+        選択中のテキストを読み取って検索エンジンに入力し、ウェブブラウザを開くメソッドを返す
+        search_engine_url: str 検索エンジンのURL。例: 'https://www.google.com/search?q=%s'
+        '''
+        def inner(*_):
+            widget = self.master.focus_get()
+            text = ''
+            if widget.winfo_class() =='Text':
+                if widget.tag_ranges(SEL):
+                    text = widget.get(SEL_FIRST, SEL_LAST)
+            elif widget.winfo_class() =='TEntry':
+                text = widget.get()
+
+            if not text:
+                return
+
+            try:
+                webbrowser.open(search_engine_url % text)
+            except TypeError:
+                MessageDialog(
+                    '検索エンジンエラー\nURLの検索クエリ部分に\'%s\'を入れる\n例: \'https://www.google.com/search?q=%s\'',
+                    'SoroEditor - 検索エンジンエラー',
+                    ['OK']
+                    ).show()
+
+        return inner
+
     def search(self, search_text:str, use_regular_expression=False, title='', entry=None) -> list:
         if not search_text:
             return []
@@ -1562,6 +1601,7 @@ class Main(Frame):
         menu = Menu()
         self.make_menu_edit(menu)
         menu.add_separator()
+        menu.add_cascade(label='検索(S)', menu=self.menu_search)
         menu.add_cascade(label='付箋(B)', menu=self.menu_bookmark)
         menu.add_cascade(label='定型文(T)', menu=self.menu_templates)
 
