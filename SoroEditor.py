@@ -674,6 +674,7 @@ class Main(Frame):
 
         for w in self.maintexts:
             w.bind('<Button-3>', self.popup)
+            w.bind('<Control-o>', self.file_open)
 
         self.set_text_widget_editable(mode=2)
 
@@ -714,8 +715,9 @@ class Main(Frame):
         '''
         # 編集中のファイルに更新がある場合、ファイル終了ダイアログが表示される。
         # ファイル終了ダイアログでファイルを終了する選択を取らなかった場合、ファイル開始を中断する
-        if not self.file_close():
-            return
+        if self.data != self.get_current_data():
+            if not self.file_close():
+                return 'break'
         # 開くファイルを指定されている場合、ファイル選択ダイアログをスキップする
         if file_path_to_open:
             # ドライブ文字を大文字にする
@@ -823,7 +825,6 @@ class Main(Frame):
                     self.menu_file_recently.add_command(label=self.recently_files[4], command=lambda:self.file_open(file_path_to_open=self.recently_files[4]))
                 except IndexError:
                     pass
-                return
 
             except (KeyError, UnicodeDecodeError, yaml.scanner.ScannerError) as e:
                 log.error(f'Cannot open file: {e}')
@@ -839,6 +840,8 @@ class Main(Frame):
                 self.filepath = file_path_to_open
                 log.info(f'Succeed opening file: {self.filepath}')
                 self.align_the_lines(1.0, 1.0, False)
+
+        return 'break'
 
     def file_save_as(self, e=None) -> bool:
         self.filepath = filedialog.asksaveasfilename(
