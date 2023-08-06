@@ -3,29 +3,31 @@ SoroEditor - Joppincal
 This software is distributed under the MIT License. See LICENSE for details.
 See ThirdPartyNotices.txt for third party libraries.
 '''
-from PIL import Image, ImageTk
-from collections import deque, namedtuple
-import csv
 import datetime
 import difflib
-import logging
-import logging.handlers
 import os
-from random import choice
 import re
 import sys
-from tkinter import BooleanVar, IntVar, StringVar, PhotoImage, TclError, filedialog, font
 import webbrowser
-from ttkbootstrap import Button, Checkbutton, Entry, Frame, Label, Labelframe,\
-    Menu, Notebook, OptionMenu, PanedWindow, Radiobutton, Scrollbar, Separator, Spinbox, \
-    Style, Text, Toplevel, Treeview, Window
+from collections import deque, namedtuple
+from random import choice
+import csv
+import logging
+import logging.handlers
+import yaml
+
+from PIL import Image, ImageTk
+from tkinter import BooleanVar, IntVar, StringVar, PhotoImage, TclError, filedialog, font
+from ttkbootstrap import (Button, Checkbutton, Entry, Frame, Label, Labelframe,
+Menu, Notebook, OptionMenu, PanedWindow, Radiobutton, Scrollbar, Separator, Spinbox,
+Style, Text, Toplevel, Treeview, Window)
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs.dialogs import MessageDialog
 from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
-import yaml
 
-__version__ = '0.4.0'
+
+__version__ = '0.4.1'
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -61,6 +63,7 @@ class Main(Frame):
         os.chdir(os.path.dirname(sys.argv[0]))
         self.settingFile_Error_md = None
         initialization = False
+        # デフォルト設定
         self.settings ={'autosave': False,
                         'autosave_frequency': 60000,
                         'backup': True,
@@ -80,17 +83,19 @@ class Main(Frame):
                             'Yahoo!Japan': 'https://search.yahoo.co.jp/search?p=%s',
                             'Wikipedia ja': 'http://ja.wikipedia.org/wiki/%s'
                             },
-                        'statusbar_element_settings':
-                            {0: ['hotkeys3', 'statusbar_message'],
+                        'statusbar_element_settings': {
+                            0: ['hotkeys3', 'statusbar_message'],
                             1: ['hotkeys2'],
                             2: ['hotkeys1'],
                             3: ['current_place'],
                             4: ['toolbutton_create', 'toolbutton_open', 'toolbutton_save', 'toolbutton_file_reload'],
-                            5: ['toolbutton_bookmark', 'toolbutton_template', 'toolbutton_search', 'toolbutton_replace', 'toolbutton_setting']},
+                            5: ['toolbutton_bookmark', 'toolbutton_template', 'toolbutton_search', 'toolbutton_replace', 'toolbutton_setting']
+                            },
                         'templates':{},
                         'themename': '',
                         'version': __version__,
                         'wrap': NONE}
+        # 設定ファイルを開く
         try:
             with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
