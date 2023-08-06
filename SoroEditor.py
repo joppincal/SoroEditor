@@ -862,7 +862,7 @@ class Main(Frame):
                 # 現在のデータを読み込む
                 current_data = self.get_current_data()
                 # ファイルに書き込む
-                yaml.safe_dump(current_data, f, encoding='utf-8', allow_unicode=True, canonical=True)
+                yaml.safe_dump(current_data, f, encoding='utf-8', allow_unicode=True)
                 # 変更前のデータを更新する（変更検知に用いられる）
                 self.data = current_data
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
@@ -880,7 +880,7 @@ class Main(Frame):
         '''
         try:
             with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.dump(self.settings, f, allow_unicode=True, canonical=True)
+                yaml.dump(self.settings, f, allow_unicode=True)
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
@@ -1496,7 +1496,7 @@ class Main(Frame):
         current_data = self.get_current_data()
 
         # データをyaml形式の文字列に変換する
-        new_data = yaml.safe_dump(current_data, allow_unicode=True, canonical=True)
+        new_data = yaml.safe_dump(current_data, allow_unicode=True)
 
         # 新しいデータにタイムスタンプを追加する
         timestamp = datetime.datetime.now().strftime('# %Y-%m-%d-%H-%M-%S\n')
@@ -2008,7 +2008,7 @@ backup-{ファイル名}.$epに保存されます
         # 設定ファイルに更新された辞書を保存する
         try:
             with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.dump(self.settings, f, allow_unicode=True, canonical=True)
+                yaml.dump(self.settings, f, allow_unicode=True)
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
@@ -3061,7 +3061,7 @@ class TemplateWindow(Toplevel):
             app.templates = self.templates
             app.make_menu_templates()
             with open('./settings.yaml', mode='wt', encoding='utf-8') as f:
-                yaml.dump(self.settings, f, allow_unicode=True, canonical=True)
+                yaml.dump(self.settings, f, allow_unicode=True)
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
