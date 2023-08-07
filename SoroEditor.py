@@ -3328,15 +3328,20 @@ class BookmarkWindow(Toplevel):
 class Icons:
     '''Stores the path of the icon image'''
     def __init__(self):
-        with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-            theme = data['themename']
-            if not theme or not theme in STANDARD_THEMES.keys():
-                theme = DEFAULT_THEME
-            theme_type = STANDARD_THEMES[theme]['type']
-        if theme_type == 'dark':
-            icon_type = 'white'
-        elif theme_type == 'light':
+        try:
+            with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                theme = data['themename']
+                if not theme or not theme in STANDARD_THEMES.keys():
+                    theme = DEFAULT_THEME
+                theme_type = STANDARD_THEMES[theme]['type']
+            if theme_type == 'dark':
+                icon_type = 'white'
+            elif theme_type == 'light':
+                icon_type = 'black'
+        except:
+            theme = 'litera'
+            theme_type = 'light'
             icon_type = 'black'
         self.icon = PhotoImage(file='src/icon/icon.png')
         self.file_create = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
@@ -3355,8 +3360,8 @@ class Icons:
         self.export = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/export.png'))
         self.import_ = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/import.png'))
 
-    def __make_image_path(self, p) -> str:
-        return os.path.join(os.path.dirname(__file__), p)
+    def __make_image_path(self, path) -> str:
+        return os.path.join(os.path.dirname(__file__), path)
 
 if __name__ == '__main__':
     log_setting()
