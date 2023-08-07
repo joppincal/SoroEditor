@@ -1244,6 +1244,12 @@ class Main(Frame):
                 if mode == 0:
                     widget.delete(SEL_FIRST, SEL_LAST)
             else:
+                return
+                # issue58
+                # 選択されたテキストがない場合、カーソルのある行をコピー・カットするコード
+                # ショートカットキーでmode=0を呼び出す時正常に動作しない
+                # (OSのカット機能と競合しクリップボードに贈られるテキストが壊れる)原因になっているため無効化
+                # 解決策が見つかり次第修正したい
                 t = widget.get(INSERT+' linestart', INSERT+'+1line linestart')
                 if mode == 0:
                     widget.delete(INSERT+' linestart', INSERT+'+1line linestart')
