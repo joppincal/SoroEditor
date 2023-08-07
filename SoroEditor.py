@@ -680,6 +680,8 @@ class Main(Frame):
         for w in self.maintexts:
             w.bind('<Button-3>', self.popup)
             w.bind('<Control-o>', self.file_open)
+            for event in ['<Alt-Up>', '<Alt-Control-Up>', '<Alt-Down>', '<Alt-Control-Down>']:
+                w.bind(event, self.handle_KeyPress_event_of_swap_lines)
 
         self.set_text_widget_editable(mode=2)
 
@@ -1276,6 +1278,86 @@ class Main(Frame):
                 widget.delete(SEL_FIRST, SEL_LAST)
         widget.insert(INSERT, t)
         self.recode_edit_history()
+
+    def swap_lines(self, mode='up', widget=None):
+        '''
+        Swap selected lines or current line up or down in a text widget.
+
+        Parameters:
+        - mode (str): Swap direction, either 'up' or 'down'.
+        - widget (tk.Text): The Text widget to perform the swap in.
+
+        '''
+        if not widget:
+            return
+
+        sel_first, sel_last = '', ''
+        insert = widget.index(INSERT)
+
+        if widget.tag_ranges(SEL):
+            sel_first, sel_last = widget.index(SEL_FIRST), widget.index(SEL_LAST)
+            swap_index = (SEL_FIRST+' linestart', SEL_LAST+'+1line linestart')
+        else:
+            swap_index = (INSERT+' linestart', INSERT+'+1line linestart')
+
+        text = widget.get(*swap_index)
+        widget.delete(*swap_index)
+
+        if mode == 'up':
+            move_to_index = INSERT+'-1line linestart'
+            insert_index = insert+'-1line'
+            sel_first, sel_last = sel_first+'-1line', sel_last+'-1line'
+        if mode == 'down':
+            move_to_index = INSERT+'+1line linestart'
+            insert_index = insert+'+1line'
+            sel_first, sel_last = sel_first+'+1line', sel_last+'+1line'
+
+        widget.insert(move_to_index, text)
+        widget.mark_set(INSERT, insert_index)
+        try:
+            if sel_first and sel_last:
+                widget.tag_add(SEL, sel_first, sel_last)
+        except TclError:
+            pass
+
+    def swap_lines_in_all_boxes(self, mode='up', widget=None):
+        '''
+        Swap selected lines or current line up or down in all text boxes.
+
+        Parameters:
+        - widget (tk.Text): The Text widget to perform the swap in.
+        - mode (str): Swap direction, either 'up' or 'down'.
+
+        '''
+        if not widget:
+            return
+
+        insert = widget.index(INSERT)
+        sel_first, sel_last = insert, insert
+
+        if widget.tag_ranges(SEL):
+            sel_first, sel_last = widget.index(SEL_FIRST), widget.index(SEL_LAST)
+
+        self.set_text_widget_editable(mode=1)
+        for box in self.maintexts:
+            box.mark_set(INSERT, insert)
+            box.tag_add(SEL, sel_first, sel_last)
+            self.swap_lines(mode, box)
+            if box != widget:
+                box.tag_remove(SEL, 1.0, END)
+        self.set_text_widget_editable(mode=0)
+
+    def handle_KeyPress_event_of_swap_lines(self, event):
+        if event.keysym == 'Up' and event.state == 393216:# Alt-Up
+            self.swap_lines('up', event.widget)
+        elif event.keysym == 'Up' and event.state == 393220:# Alt-Ctrl-Up
+            self.swap_lines_in_all_boxes('up', event.widget)
+        elif event.keysym == 'Down' and event.state == 393216:# Alt-Down
+            self.swap_lines('down', event.widget)
+        elif event.keysym == 'Down' and event.state == 393220:# Alt-Ctrl-Down
+            self.swap_lines_in_all_boxes('down', event.widget)
+
+        return 'break'
 
     def select_all(self, e=None):
         widget = self.master.focus_get()
