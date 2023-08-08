@@ -352,10 +352,20 @@ class Main(Frame):
         ## 顔文字
         kaomoji_list = ['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)', '(●▲●)', '(○▽○)', '(´・ω・)つ旦', ' (●ﾟ◇ﾟ●)', "（'ω`）"]
         self.kaomoji = ('label', choice(kaomoji_list))
-        ## その他ステータスバー
+        ## 時計
         self.now = StringVar()
         self.clock_mode = self.settings.get('clock_mode', 'ymdhm')
-        self.clock = ('label', None, self.clock_change, None, self.now)
+        self.clock = ('label', None, [self.clock_change], None, self.now)
+        ## カウントアップ
+        self.count_up_time = StringVar(value='0:00:00')
+        self.counting = False
+        self.count_up_timer = {
+            'type': 'label',
+            'text': None,
+            'command': [self.counter_clicked],
+            'image': None,
+            'textvariable': self.count_up_time,
+            }
         ## ツールボタン
         self.toolbutton_create = ('button', '新規作成', [self.file_create], self.Icons.file_create)
         self.toolbutton_open = ('button', 'ファイルを開く', [self.file_open], self.Icons.file_open)
@@ -390,7 +400,8 @@ class Main(Frame):
                 'hotkeys3': self.hotkeys3,
                 'infomation': self.infomation,
                 'kaomoji': self.kaomoji,
-                'now':self.clock,
+                'clock':self.clock,
+                'count_up_timer':self.count_up_timer,
                 'toolbutton_create': self.toolbutton_create,
                 'toolbutton_open': self.toolbutton_open,
                 'toolbutton_save': self.toolbutton_save,
@@ -473,8 +484,12 @@ class Main(Frame):
             if num in range(7) and l2:
                 self.statusbar_element_dict[num] = dict()
                 for i, e in enumerate(l2):
-                    if not e: continue
-                    self.statusbar_element_dict[num][i] = make_statusbar_element(*e)
+                    if not e:
+                        continue
+                    if type(e) == tuple:
+                        self.statusbar_element_dict[num][i] = make_statusbar_element(*e)
+                    if type(e) == dict:
+                        self.statusbar_element_dict[num][i] = make_statusbar_element(**e)
                 for e in self.statusbar_element_dict[num].values():
                     if num < 4:
                         i = 1
@@ -488,12 +503,20 @@ class Main(Frame):
         def statusbar_element_reload(event=None):
             for e in self.statusbar_element_dict.keys():
                 settings = self.settings['statusbar_element_settings'][e]
+
                 for f in self.statusbar_element_dict[e].keys():
-                    new_element = statusbar_element_setting_load(settings[f])[1]
+                    statusbar_element = statusbar_element_setting_load(settings[f])
+
+                    if type(statusbar_element) == tuple:
+                        new_element = statusbar_element[1]
+                    elif type(statusbar_element) == dict:
+                        new_element = statusbar_element['text']
+
                     if type(self.statusbar_element_dict[e][f]) == Label:
                         self.statusbar_element_dict[e][f]['text'] = new_element
                     elif type(self.statusbar_element_dict[e][f]) == Button:
                         pass
+
         self.statusbar_element_reload = statusbar_element_reload
 
         self.statusbar_element_dict = dict()
@@ -1116,6 +1139,20 @@ class Main(Frame):
         self.settings['clock_mode'] = self.clock_mode
         self.update_setting_file()
         self.now_time_set()
+
+    def counter_clicked(self, _):
+        if self.counting:
+            self.counting = False
+        else:
+            self.the_time_start_count_up = datetime.datetime.now()
+            self.counting = True
+            self.count_up()
+
+    def count_up(self):
+        if self.counting == True:
+            count_up_value = datetime.datetime.now() - self.the_time_start_count_up
+            self.count_up_time.set(str(count_up_value)[:-7])
+            self.master.after(100, self.count_up)
 
     def get_current_data(self):
         current_data = {}
