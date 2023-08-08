@@ -357,21 +357,21 @@ class Main(Frame):
         self.clock_mode = self.settings.get('clock_mode', 'ymdhm')
         self.clock = ('label', None, self.clock_change, None, self.now)
         ## ツールボタン
-        self.toolbutton_create = ('button', '新規作成', self.file_create, self.Icons.file_create)
-        self.toolbutton_open = ('button', 'ファイルを開く', self.file_open, self.Icons.file_open)
-        self.toolbutton_save = ('button', '上書き保存', self.file_over_write_save, self.Icons.file_save)
-        self.toolbutton_save_as = ('button', '名前をつけて保存', self.file_save_as, self.Icons.file_save_as)
-        self.toolbutton_file_reload = ('button', '再読込', self.file_reload, self.Icons.refresh)
-        self.toolbutton_project_setting = ('button', 'プロジェクト設定', ProjectFileSettingWindow, self.Icons.project_settings)
-        self.toolbutton_setting = ('button', '設定', self.open_SettingWindow, self.Icons.settings)
-        self.toolbutton_search = ('button', '検索', self.open_SearchWindow, self.Icons.search)
-        self.toolbutton_replace = ('button', '置換', lambda: self.open_SearchWindow('1'), self.Icons.replace)
-        self.toolbutton_import = ('button', 'インポート', ImportWindow, self.Icons.import_)
-        self.toolbutton_export = ('button', 'エクスポート', ExportWindow, self.Icons.export)
-        self.toolbutton_template = ('button', '定型文', self.open_TemplateWindow, self.Icons.template)
-        self.toolbutton_bookmark = ('button', '付箋', self.open_BookmarkWindow, self.Icons.bookmark)
-        self.toolbutton_undo = ('button', '取り消し', self.undo, self.Icons.undo)
-        self.toolbutton_repeat = ('button', '取り消しを戻す', self.repeat, self.Icons.repeat)
+        self.toolbutton_create = ('button', '新規作成', [self.file_create], self.Icons.file_create)
+        self.toolbutton_open = ('button', 'ファイルを開く', [self.file_open], self.Icons.file_open)
+        self.toolbutton_save = ('button', '上書き保存', [self.file_over_write_save], self.Icons.file_save)
+        self.toolbutton_save_as = ('button', '名前をつけて保存', [self.file_save_as], self.Icons.file_save_as)
+        self.toolbutton_file_reload = ('button', '再読込', [self.file_reload], self.Icons.refresh)
+        self.toolbutton_project_setting = ('button', 'プロジェクト設定', [ProjectFileSettingWindow], self.Icons.project_settings)
+        self.toolbutton_setting = ('button', '設定', [self.open_SettingWindow], self.Icons.settings)
+        self.toolbutton_search = ('button', '検索', [self.open_SearchWindow], self.Icons.search)
+        self.toolbutton_replace = ('button', '置換', [lambda: self.open_SearchWindow('1')], self.Icons.replace)
+        self.toolbutton_import = ('button', 'インポート', [ImportWindow], self.Icons.import_)
+        self.toolbutton_export = ('button', 'エクスポート', [ExportWindow], self.Icons.export)
+        self.toolbutton_template = ('button', '定型文', [self.open_TemplateWindow], self.Icons.template)
+        self.toolbutton_bookmark = ('button', '付箋', [self.open_BookmarkWindow], self.Icons.bookmark)
+        self.toolbutton_undo = ('button', '取り消し', [self.undo], self.Icons.undo)
+        self.toolbutton_repeat = ('button', '取り消しを戻す', [self.repeat], self.Icons.repeat)
         ## 初期ステータスバーメッセージ
         self.statusbar_message = ('label', 'ツールバー・ステータスバーの項目は設定-ツールバー・ステータスバー から変更できます')
 
@@ -413,12 +413,21 @@ class Main(Frame):
                 return method
 
         # ステータスバー作成メソッド
-        def make_statusbar_element(elementtype=None, text=None, commmand=None, image=None, textvariable=None):
-            if elementtype == 'label':
-                label = Label(text=text, image=image, textvariable=textvariable)
-                label.bind('<Button>', commmand)
-                return label
-            if elementtype == 'button':
+        def make_statusbar_element(type:str='', text:str='', command:list=[], image:PhotoImage=None, textvariable:StringVar=None):
+            '''
+            Make statusbar and toolbar elements.
+
+            Parameters:
+            - type (str): Widget type, either 'label' or 'button'
+            - command (list): If only one command is passed, it will respond to a click on any button.\
+                If multiple commands are passed, Button1, Button2, Button3, in that order.\
+                Any more than that will be ignored.
+            '''
+            widget = None
+
+            if type == 'label':
+                widget = Label(text=text, image=image, textvariable=textvariable)
+            if type == 'button':
                 if self.button_style == 'icon_only':
                     compound = None
                 elif self.button_style == 'text_only':
@@ -426,12 +435,22 @@ class Main(Frame):
                     image = None
                 else: # icon_with_textの場合及びそのほか不適切な文字列の場合
                     compound = LEFT
-                button = Button(text=text, command=commmand, image=image, takefocus=False, compound=compound, textvariable=textvariable)
+
+                widget = Button(text=text, image=image, takefocus=False, compound=compound, textvariable=textvariable)
+
                 if self.windowstyle.theme_use() in  [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'light']:
-                    button.config(bootstyle='light')
+                    widget.config(bootstyle='light')
                 elif self.windowstyle.theme_use() in [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'dark']:
-                    button.config(bootstyle='dark')
-                return button
+                    widget.config(bootstyle='dark')
+
+            if widget:
+                if len(command) == 1:
+                    widget.bind('<Button>', command[0])
+                if len(command) > 1:
+                    for i in range(3):
+                        widget.bind(f'<Button-{i+1}>', command[i])
+
+            return widget
 
         # ステータスバー設定メソッド
         def statusbar_element_setting(event=None, num=None):
