@@ -352,6 +352,10 @@ class Main(Frame):
         ## 顔文字
         kaomoji_list = ['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)', '(●▲●)', '(○▽○)', '(´・ω・)つ旦', ' (●ﾟ◇ﾟ●)', "（'ω`）"]
         self.kaomoji = ('label', choice(kaomoji_list))
+        ## その他ステータスバー
+        self.now = StringVar()
+        self.clock_mode = self.settings.get('clock_mode', 'ymdhm')
+        self.clock = ('label', None, self.clock_change, None, self.now)
         ## ツールボタン
         self.toolbutton_create = ('button', '新規作成', [self.file_create], self.Icons.file_create)
         self.toolbutton_open = ('button', 'ファイルを開く', [self.file_open], self.Icons.file_open)
@@ -386,6 +390,7 @@ class Main(Frame):
                 'hotkeys3': self.hotkeys3,
                 'infomation': self.infomation,
                 'kaomoji': self.kaomoji,
+                'now':self.clock,
                 'toolbutton_create': self.toolbutton_create,
                 'toolbutton_open': self.toolbutton_open,
                 'toolbutton_save': self.toolbutton_save,
@@ -598,6 +603,7 @@ class Main(Frame):
             self.file_open(file_path_to_open=sys.argv[1])
 
         self.master.after(500, self.change_window_title)
+        self.now_time_set()
         self.master.after(self.ms_align_the_lines, self.align_the_lines)
         self.master.after(self.autosave_frequency, self.autosave)
         self.master.after(self.backup_frequency, self.backup)
@@ -1079,6 +1085,37 @@ class Main(Frame):
         if not debug:
             obj = obj.rstrip('\r\n')
         return obj.count('\n') + 1 if obj else 0
+
+    def now_time_set(self):
+        mode = self.clock_mode
+        if mode == 'ymdhms':
+            self.now.set(datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
+        if mode =='ymdhm':
+            self.now.set(datetime.datetime.now().strftime('%Y/%m/%d %H:%M'))
+        if mode =='mdhms':
+            self.now.set(datetime.datetime.now().strftime('%m/%d %H:%M:%S'))
+        if mode =='mdhm':
+            self.now.set(datetime.datetime.now().strftime('%m/%d %H:%M'))
+        if mode =='hms':
+            self.now.set(datetime.datetime.now().strftime('%H:%M:%S'))
+        if mode =='hm':
+            self.now.set(datetime.datetime.now().strftime('%H:%M'))
+
+        self.master.after(100, self.now_time_set)
+
+    def clock_change(self, _):
+        modes = ['ymdhm', 'ymdhms', 'mdhm', 'mdhms', 'hm', 'hms']
+        try:
+            index = modes.index(self.clock_mode)
+        except ValueError:
+            index = 5
+        if index == 5:
+            self.clock_mode = modes[0]
+        else:
+            self.clock_mode = modes[index+1]
+        self.settings['clock_mode'] = self.clock_mode
+        self.update_setting_file()
+        self.now_time_set()
 
     def get_current_data(self):
         current_data = {}
