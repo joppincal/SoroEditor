@@ -458,7 +458,7 @@ class Main(Frame):
                 if len(command) == 1:
                     widget.bind('<Button>', command[0])
                 if len(command) > 1:
-                    for i in range(3):
+                    for i in range(len(command)):
                         widget.bind(f'<Button-{i+1}>', command[i])
 
             return widget
