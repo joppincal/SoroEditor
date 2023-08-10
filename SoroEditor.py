@@ -455,9 +455,12 @@ class Main(Frame):
                     widget.config(bootstyle='dark')
 
             if widget:
-                if len(command) == 1:
+                if __builtins__.type(command) == dict:
+                    for sequence, func in command.items():
+                        widget.bind(sequence, func)
+                elif len(command) == 1:
                     widget.bind('<Button>', command[0])
-                if len(command) > 1:
+                elif len(command) > 1:
                     for i in range(len(command)):
                         widget.bind(f'<Button-{i+1}>', command[i])
 
