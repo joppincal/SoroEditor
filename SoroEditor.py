@@ -358,11 +358,11 @@ class Main(Frame):
         self.clock = ('label', None, [self.clock_change], None, self.now)
         ## カウントアップ
         self.count_up_time = StringVar(value='0:00:00')
-        self.counting = False
+        self.counting_up = False
         self.count_up_timer = {
             'type': 'label',
             'text': None,
-            'command': [self.counter_clicked],
+            'command': [self.count_up_timer_clicked],
             'image': None,
             'textvariable': self.count_up_time,
             }
@@ -1143,16 +1143,16 @@ class Main(Frame):
         self.update_setting_file()
         self.now_time_set()
 
-    def counter_clicked(self, _):
-        if self.counting:
-            self.counting = False
+    def count_up_timer_clicked(self, _):
+        if self.counting_up:
+            self.counting_up = False
         else:
             self.the_time_start_count_up = datetime.datetime.now()
-            self.counting = True
+            self.counting_up = True
             self.count_up()
 
     def count_up(self):
-        if self.counting == True:
+        if self.counting_up == True:
             count_up_value = datetime.datetime.now() - self.the_time_start_count_up
             self.count_up_time.set(str(count_up_value)[:-7])
             self.master.after(100, self.count_up)
