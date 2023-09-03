@@ -1131,6 +1131,13 @@ class Main(Frame):
 
     def now_time_set(self):
         mode = self.clock_mode
+
+        if mode not in ('ymdhms', 'ymdhm', 'mdhms', 'mdhm', 'hms', 'hm'):
+            mode = 'ymdhm'
+            self.clock_mode = 'ymdhm'
+            self.settings.update(clock_mode=self.clock_mode)
+            self.update_setting_file()
+
         if mode == 'ymdhms':
             self.now.set(datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
         if mode =='ymdhm':
