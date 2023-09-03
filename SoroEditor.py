@@ -366,6 +366,22 @@ class Main(Frame):
             'image': None,
             'textvariable': self.count_up_time,
             }
+        ## カウントダウン
+        self.count_down_from = self.settings.get('count_down_from', 10.0)
+        if type(self.count_down_from) not in (int, float):
+            self.count_down_from = 10.0
+        self.count_down_stop_value = self.seconds_to_time_string(self.count_down_from)
+        self.count_down_time = StringVar(value=self.count_down_stop_value)
+        self.counting_down = False
+        self.count_down_timer = {
+            'type': 'label',
+            'text': '',
+            'command': {
+                '<Button>': self.count_down_timer_clicked,
+                '<MouseWheel>': self.count_down_timer_wheeled,
+            },
+            'textvariable': self.count_down_time
+        }
         ## ツールボタン
         self.toolbutton_create = ('button', '新規作成', [self.file_create], self.Icons.file_create)
         self.toolbutton_open = ('button', 'ファイルを開く', [self.file_open], self.Icons.file_open)
@@ -402,6 +418,7 @@ class Main(Frame):
                 'kaomoji': self.kaomoji,
                 'clock':self.clock,
                 'count_up_timer':self.count_up_timer,
+                'count_down_timer':self.count_down_timer,
                 'toolbutton_create': self.toolbutton_create,
                 'toolbutton_open': self.toolbutton_open,
                 'toolbutton_save': self.toolbutton_save,
@@ -1152,10 +1169,105 @@ class Main(Frame):
             self.count_up()
 
     def count_up(self):
-        if self.counting_up == True:
             count_up_value = datetime.datetime.now() - self.the_time_start_count_up
             self.count_up_time.set(str(count_up_value)[:-7])
             self.master.after(100, self.count_up)
+
+    def count_down_timer_clicked(self, event):
+        if self.counting_down: # カウントダウン中の場合、停止する
+            self.counting_down = False
+            self.count_down_stop_value = self.count_down_time.get()
+        else:
+            count_down_from = self.seconds_to_time_string(self.count_down_from)
+            if event.num == 1: # 左クリックの処理
+                if self.count_down_stop_value == '0:00:00.00': # 値が0の場合リセットする
+                    self.count_down_stop_value = count_down_from
+                    self.count_down_time.set(count_down_from)
+                else: # それ以外の場合スタートする
+                    self.the_time_start_count_down = datetime.datetime.now().replace(1900, 1, 1)
+                    self.counting_down = True
+                    self.count_down()
+            elif event.num == 3: # 右クリックでリセットする
+                self.count_down_time.set(count_down_from)
+                self.count_down_stop_value = count_down_from
+
+    def count_down_timer_wheeled(self, event):
+        if self.counting_down: # カウントダウン中は動作しない
+            return
+
+        value = self.count_down_from
+
+        if value > 86399: # 86400秒(一日)を超えて設定させない
+            value = 85800
+
+        if value != self.time_string_to_seconds(self.count_down_stop_value) - 86400: # カウントダウン一時停止時には値をリセットする
+            self.count_down_stop_value = self.seconds_to_time_string(value)
+            self.count_down_time.set(self.count_down_stop_value)
+            return
+
+        if value < 600:
+            increment = 10
+        elif value < 3600:
+            increment = 30
+        else:
+            increment = 600
+
+        if event.delta > 0:
+            value = value + increment
+        elif event.delta < 0:
+            value = value - increment
+
+        if value < 0:
+            value = 0
+        if value > 86399:
+            value = 85800
+
+        self.count_down_time.set(self.seconds_to_time_string(value))
+        self.count_down_stop_value = self.seconds_to_time_string(value)
+
+        self.count_down_from = value
+        self.settings['count_down_from'] = self.count_down_from
+        self.update_setting_file()
+
+    def count_down(self):
+        if self.counting_down:
+            value = self.time_string_to_datetime(self.count_down_stop_value)
+            time_since_start = datetime.datetime.now().replace(1900, 1, 1) - self.the_time_start_count_down
+            value = value - time_since_start
+
+            if value.year == 1899: # 0の場合停止する
+                value = datetime.datetime(1900, 1, 1)
+                self.counting_down = False
+                self.count_down_stop_value = '0:00:00.00'
+                print('\a')
+
+            value = datetime.datetime.strftime(value, f'{value.hour}:%M:%S.%f')
+            self.count_down_time.set(value[:-4])
+            self.master.after(10, self.count_down)
+
+    def seconds_to_time_string(self, second):
+        time = datetime.timedelta(seconds=second)
+        day, second, microsecond = time.days+1, time.seconds, time.microseconds
+        minute, second = divmod(second, 60)
+        hour, minute = divmod(minute, 60)
+        time = datetime.datetime(1900, 1, day, hour, minute, second, microsecond)
+        string = datetime.datetime.strftime(time, f'{time.hour}:%M:%S.%f')[:-4]
+        return string
+
+    def time_string_to_seconds(self, string):
+        try:
+            value = datetime.datetime.strptime(string, '%H:%M:%S')
+        except ValueError:
+            value = datetime.datetime.strptime(string, '%H:%M:%S.%f')
+        seconds = value.day*86400 + value.hour*3600 + value.minute*60 + value.second + value.microsecond/1000000
+        return seconds
+
+    def time_string_to_datetime(self, string):
+        try:
+            value = datetime.datetime.strptime(string, '%H:%M:%S')
+        except ValueError:
+            value = datetime.datetime.strptime(string, '%H:%M:%S.%f')
+        return value
 
     def get_current_data(self):
         current_data = {}
@@ -3529,7 +3641,6 @@ class Icons:
             theme = 'litera'
             theme_type = 'light'
             icon_type = 'black'
-        self.icon = PhotoImage(file='src/icon/icon.png')
         self.file_create = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
         self.file_open = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_open.png'))
         self.file_save = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save.png'))
