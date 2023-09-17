@@ -358,6 +358,7 @@ class Main(Frame):
         self.clock = ('label', None, [self.clock_change], None, self.now)
         ## カウントアップ
         self.count_up_time = StringVar(value='0:00:00')
+        self.the_time_count_up_stoped = datetime.datetime.now()
         self.counting_up = False
         self.count_up_timer = {
             'type': 'label',
@@ -1167,17 +1168,28 @@ class Main(Frame):
         self.update_setting_file()
         self.now_time_set()
 
-    def count_up_timer_clicked(self, _):
+    def count_up_timer_clicked(self, event):
         if self.counting_up:
+            self.the_time_count_up_stoped = datetime.datetime.now()
             self.counting_up = False
         else:
-            self.the_time_start_count_up = datetime.datetime.now()
-            self.counting_up = True
-            self.count_up()
+            if event.num == 1:
+                if self.count_up_time.get() == '0:00:00':
+                    self.the_time_start_count_up = datetime.datetime.now()
+                else:
+                    self.the_time_start_count_up = datetime.datetime.now() - (self.the_time_count_up_stoped - self.the_time_start_count_up)
+                self.counting_up = True
+                self.count_up()
+            elif event.num == 3:
+                self.count_up_time.set('0:00:00')
 
     def count_up(self):
+        if self.counting_up:
             count_up_value = datetime.datetime.now() - self.the_time_start_count_up
-            self.count_up_time.set(str(count_up_value)[:-7])
+            count_up_value = str(count_up_value)
+            if count_up_value != '0:00:00':
+                count_up_value = count_up_value[:-7]
+            self.count_up_time.set(count_up_value)
             self.master.after(100, self.count_up)
 
     def count_down_timer_clicked(self, event):
@@ -2352,6 +2364,7 @@ backup-{ファイル名}.$epに保存されます
             app.autosave_frequency = autosave_frequency
             app.do_backup = backup
             app.backup_frequency = backup_frequency
+            app.settings = self.settings
             for w in app.textboxes:
                 w.config(wrap=wrap, spacing2=between_lines)
             app.make_text_editor()
@@ -3648,6 +3661,7 @@ class Icons:
             theme = 'litera'
             theme_type = 'light'
             icon_type = 'black'
+        self.icon = PhotoImage(file=self.__make_image_path('src/icon/icon.png'))
         self.file_create = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
         self.file_open = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_open.png'))
         self.file_save = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save.png'))
