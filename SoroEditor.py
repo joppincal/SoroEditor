@@ -685,9 +685,13 @@ class Main(Frame):
             self.f1_1 = Frame(self.f1, padding=0)
             self.line_number_box_entry = Entry(self.f1_1, font=self.font, width=3,
                                                 state=DISABLED, takefocus=NO)
-            self.line_number_box = Text(self.f1_1, font=self.font,
-                                        width=4,
-                                        spacing3=self.between_lines,)
+            self.line_number_box = Text(
+                self.f1_1,
+                font=self.font,
+                width=4,
+                spacing2=self.between_lines,
+                spacing3=self.between_lines,
+                )
             self.line_number_box.tag_config('right', justify=RIGHT)
             for i in range(9999):
                 i = i + 1
@@ -709,9 +713,15 @@ class Main(Frame):
         for i in range(self.number_of_columns):
             self.columns.append(Frame(self.f1_2, padding=0))
             self.entrys.append(Entry(self.columns[i], font=self.font))
-            self.maintexts.append(Text(self.columns[i], wrap=self.wrap,
-                                    font=self.font,
-                                    spacing3=self.between_lines))
+            self.maintexts.append(
+                Text(
+                    self.columns[i],
+                    wrap=self.wrap,
+                    font=self.font,
+                    spacing2=self.between_lines,
+                    spacing3=self.between_lines,
+                    )
+                )
         for w in self.maintexts:
             w.tag_config('search', background='blue', foreground='white')
             w.tag_config('search_selected', background='cyan', foreground='white')
@@ -729,9 +739,15 @@ class Main(Frame):
         ## ダミーテキスト（スクロールバーのための）
         self.dummy_column = (Frame(self.f1_2, padding=0))
         self.dummy_entry = (Entry(self.dummy_column, font=self.font))
-        self.dummy_maintext = (Text(self.dummy_column, wrap=self.wrap,
-                                font=self.font,
-                                spacing3=self.between_lines))
+        self.dummy_maintext = (
+            Text(
+                self.dummy_column,
+                wrap=self.wrap,
+                font=self.font,
+                spacing2=self.between_lines,
+                spacing3=self.between_lines
+                )
+            )
         self.dummy_column.place(relx=1.0, rely=0.0, relwidth=1.0, relheight=1.0)
         self.dummy_entry.pack(fill=X, expand=False, padx=5, pady=0)
         self.dummy_maintext.pack(fill=BOTH, expand=YES, padx=5, pady=10)
@@ -2357,6 +2373,7 @@ backup-{ファイル名}.$epに保存されます
         try:
             app.font.config(family=font_family, size=font_size)
             app.between_lines = between_lines
+            app.wrap = wrap
             app.windowstyle.theme_use(themename)
             app.selection_line_highlight = selection_line_highlight
             if geometry == 'Full Screen':
@@ -2370,8 +2387,11 @@ backup-{ファイル名}.$epに保存されます
             app.backup_frequency = backup_frequency
             app.settings = self.settings
             for w in app.textboxes:
-                w.config(wrap=wrap, spacing2=between_lines)
-            app.make_text_editor()
+                w.config(
+                    wrap=wrap,
+                    spacing2=between_lines,
+                    spacing3=between_lines,
+                    )
         except TclError as e:
             log.error(f'Failed to write to the settigs dict: {e}')
 
