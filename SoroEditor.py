@@ -1860,7 +1860,7 @@ class Main(Frame):
         current_data = self.get_current_data()
 
         # データをyaml形式の文字列に変換する
-        new_data = yaml.safe_dump(current_data, allow_unicode=True)
+        new_data = yaml.safe_dump(current_data, allow_unicode=True, canonical=True)
 
         # 新しいデータにタイムスタンプを追加する
         timestamp = datetime.datetime.now().strftime('# %Y-%m-%d-%H-%M-%S\n')
