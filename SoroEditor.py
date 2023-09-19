@@ -1910,6 +1910,14 @@ class Main(Frame):
                     num_of_separator = num_of_separator + 1
         backup_data.reverse()
 
+        # バックアップデータの冒頭にHow toを記述する
+        how_to = [
+            '# このファイルはSoroEditorプロジェクトファイルのバックアップファイル\n',
+            '# ハイフンによる区切り (---)によって仕切られた一つ一つがバックアップ\n',
+            '# 一つを選んでコピーし、任意のファイルに貼り付けることで復旧可能\n'
+            ]
+        backup_data[0:0] = how_to
+
 
         # バックアップファイルにデータを書き込む
         try:
