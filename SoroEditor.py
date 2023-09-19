@@ -358,14 +358,31 @@ class Main(Frame):
         self.clock = ('label', None, [self.clock_change], None, self.now)
         ## カウントアップ
         self.count_up_time = StringVar(value='0:00:00')
-        self.counting = False
+        self.the_time_count_up_stoped = datetime.datetime.now()
+        self.counting_up = False
         self.count_up_timer = {
             'type': 'label',
             'text': None,
-            'command': [self.counter_clicked],
+            'command': [self.count_up_timer_clicked],
             'image': None,
             'textvariable': self.count_up_time,
             }
+        ## カウントダウン
+        self.count_down_from = self.settings.get('count_down_from', 10.0)
+        if type(self.count_down_from) not in (int, float):
+            self.count_down_from = 10.0
+        self.count_down_stop_value = self.seconds_to_time_string(self.count_down_from)
+        self.count_down_time = StringVar(value=self.count_down_stop_value)
+        self.counting_down = False
+        self.count_down_timer = {
+            'type': 'label',
+            'text': '',
+            'command': {
+                '<Button>': self.count_down_timer_clicked,
+                '<MouseWheel>': self.count_down_timer_wheeled,
+            },
+            'textvariable': self.count_down_time
+        }
         ## ツールボタン
         self.toolbutton_create = ('button', '新規作成', [self.file_create], self.Icons.file_create)
         self.toolbutton_open = ('button', 'ファイルを開く', [self.file_open], self.Icons.file_open)
@@ -402,6 +419,7 @@ class Main(Frame):
                 'kaomoji': self.kaomoji,
                 'clock':self.clock,
                 'count_up_timer':self.count_up_timer,
+                'count_down_timer':self.count_down_timer,
                 'toolbutton_create': self.toolbutton_create,
                 'toolbutton_open': self.toolbutton_open,
                 'toolbutton_save': self.toolbutton_save,
@@ -455,10 +473,13 @@ class Main(Frame):
                     widget.config(bootstyle='dark')
 
             if widget:
-                if len(command) == 1:
+                if __builtins__.type(command) == dict:
+                    for sequence, func in command.items():
+                        widget.bind(sequence, func)
+                elif len(command) == 1:
                     widget.bind('<Button>', command[0])
-                if len(command) > 1:
-                    for i in range(3):
+                elif len(command) > 1:
+                    for i in range(len(command)):
                         widget.bind(f'<Button-{i+1}>', command[i])
 
             return widget
@@ -1111,6 +1132,13 @@ class Main(Frame):
 
     def now_time_set(self):
         mode = self.clock_mode
+
+        if mode not in ('ymdhms', 'ymdhm', 'mdhms', 'mdhm', 'hms', 'hm'):
+            mode = 'ymdhm'
+            self.clock_mode = 'ymdhm'
+            self.settings.update(clock_mode=self.clock_mode)
+            self.update_setting_file()
+
         if mode == 'ymdhms':
             self.now.set(datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S'))
         if mode =='ymdhm':
@@ -1140,19 +1168,125 @@ class Main(Frame):
         self.update_setting_file()
         self.now_time_set()
 
-    def counter_clicked(self, _):
-        if self.counting:
-            self.counting = False
+    def count_up_timer_clicked(self, event):
+        if self.counting_up:
+            self.the_time_count_up_stoped = datetime.datetime.now()
+            self.counting_up = False
         else:
-            self.the_time_start_count_up = datetime.datetime.now()
-            self.counting = True
-            self.count_up()
+            if event.num == 1:
+                if self.count_up_time.get() == '0:00:00':
+                    self.the_time_start_count_up = datetime.datetime.now()
+                else:
+                    self.the_time_start_count_up = datetime.datetime.now() - (self.the_time_count_up_stoped - self.the_time_start_count_up)
+                self.counting_up = True
+                self.count_up()
+            elif event.num == 3:
+                self.count_up_time.set('0:00:00')
 
     def count_up(self):
-        if self.counting == True:
+        if self.counting_up:
             count_up_value = datetime.datetime.now() - self.the_time_start_count_up
-            self.count_up_time.set(str(count_up_value)[:-7])
+            count_up_value = str(count_up_value)
+            if count_up_value != '0:00:00':
+                count_up_value = count_up_value[:-7]
+            self.count_up_time.set(count_up_value)
             self.master.after(100, self.count_up)
+
+    def count_down_timer_clicked(self, event):
+        if self.counting_down: # カウントダウン中の場合、停止する
+            self.counting_down = False
+            self.count_down_stop_value = self.count_down_time.get()
+        else:
+            count_down_from = self.seconds_to_time_string(self.count_down_from)
+            if event.num == 1: # 左クリックの処理
+                if self.count_down_stop_value == '0:00:00.00': # 値が0の場合リセットする
+                    self.count_down_stop_value = count_down_from
+                    self.count_down_time.set(count_down_from)
+                else: # それ以外の場合スタートする
+                    self.the_time_start_count_down = datetime.datetime.now().replace(1900, 1, 1)
+                    self.counting_down = True
+                    self.count_down()
+            elif event.num == 3: # 右クリックでリセットする
+                self.count_down_time.set(count_down_from)
+                self.count_down_stop_value = count_down_from
+
+    def count_down_timer_wheeled(self, event):
+        if self.counting_down: # カウントダウン中は動作しない
+            return
+
+        value = self.count_down_from
+
+        if value > 86399: # 86400秒(一日)を超えて設定させない
+            value = 85800
+
+        if value != self.time_string_to_seconds(self.count_down_stop_value) - 86400: # カウントダウン一時停止時には値をリセットする
+            self.count_down_stop_value = self.seconds_to_time_string(value)
+            self.count_down_time.set(self.count_down_stop_value)
+            return
+
+        if value < 600:
+            increment = 10
+        elif value < 3600:
+            increment = 30
+        else:
+            increment = 600
+
+        if event.delta > 0:
+            value = value + increment
+        elif event.delta < 0:
+            value = value - increment
+
+        if value < 0:
+            value = 0
+        if value > 86399:
+            value = 85800
+
+        self.count_down_time.set(self.seconds_to_time_string(value))
+        self.count_down_stop_value = self.seconds_to_time_string(value)
+
+        self.count_down_from = value
+        self.settings['count_down_from'] = self.count_down_from
+        self.update_setting_file()
+
+    def count_down(self):
+        if self.counting_down:
+            value = self.time_string_to_datetime(self.count_down_stop_value)
+            time_since_start = datetime.datetime.now().replace(1900, 1, 1) - self.the_time_start_count_down
+            value = value - time_since_start
+
+            if value.year == 1899: # 0の場合停止する
+                value = datetime.datetime(1900, 1, 1)
+                self.counting_down = False
+                self.count_down_stop_value = '0:00:00.00'
+                print('\a')
+
+            value = datetime.datetime.strftime(value, f'{value.hour}:%M:%S.%f')
+            self.count_down_time.set(value[:-4])
+            self.master.after(10, self.count_down)
+
+    def seconds_to_time_string(self, second):
+        time = datetime.timedelta(seconds=second)
+        day, second, microsecond = time.days+1, time.seconds, time.microseconds
+        minute, second = divmod(second, 60)
+        hour, minute = divmod(minute, 60)
+        time = datetime.datetime(1900, 1, day, hour, minute, second, microsecond)
+        string = datetime.datetime.strftime(time, f'{time.hour}:%M:%S.%f')[:-4]
+        return string
+
+    def time_string_to_seconds(self, string):
+        try:
+            value = datetime.datetime.strptime(string, '%H:%M:%S')
+        except ValueError:
+            value = datetime.datetime.strptime(string, '%H:%M:%S.%f')
+        seconds = value.day*86400 + value.hour*3600 + value.minute*60 + value.second + value.microsecond/1000000
+        return seconds
+
+    def time_string_to_datetime(self, string):
+        try:
+            value = datetime.datetime.strptime(string, '%H:%M:%S')
+        except ValueError:
+            value = datetime.datetime.strptime(string, '%H:%M:%S.%f')
+        return value
 
     def get_current_data(self):
         current_data = {}
@@ -2230,6 +2364,7 @@ backup-{ファイル名}.$epに保存されます
             app.autosave_frequency = autosave_frequency
             app.do_backup = backup
             app.backup_frequency = backup_frequency
+            app.settings = self.settings
             for w in app.textboxes:
                 w.config(wrap=wrap, spacing2=between_lines)
             app.make_text_editor()
@@ -3526,7 +3661,7 @@ class Icons:
             theme = 'litera'
             theme_type = 'light'
             icon_type = 'black'
-        self.icon = PhotoImage(file='src/icon/icon.png')
+        self.icon = PhotoImage(file=self.__make_image_path('src/icon/icon.png'))
         self.file_create = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_create.png'))
         self.file_open = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_open.png'))
         self.file_save = PhotoImage(file=self.__make_image_path(f'src/icon/{icon_type}/file_save.png'))
