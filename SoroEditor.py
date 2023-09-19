@@ -1884,10 +1884,14 @@ class Main(Frame):
         num_of_separator = 0
         backup_data = []
         while num_of_separator < backup_max:
-            data = next(old_data)
-            backup_data.append(data)
-            if data == '---\n':
-                num_of_separator = num_of_separator + 1
+            try:
+                data = next(old_data)
+            except StopIteration:
+                num_of_separator = backup_max
+            else:
+                backup_data.append(data)
+                if data == '---\n':
+                    num_of_separator = num_of_separator + 1
         backup_data.reverse()
 
 
