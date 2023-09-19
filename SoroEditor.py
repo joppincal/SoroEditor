@@ -1850,10 +1850,10 @@ class Main(Frame):
         backup_max = 50
 
         # バックアップファイル名・パスを生成する
-        backup_filename = 'backup'
+        backup_filename = ''
         if self.filepath:
-            backup_filename += '-' + os.path.basename(self.filepath)
-        backup_filename += '.$ep'
+            backup_filename += os.path.basename(self.filepath)
+        backup_filename += '_backup.$ep'
         backup_filepath = os.path.join(os.path.dirname(self.filepath), backup_filename)
 
         # 現在のデータを取得する
