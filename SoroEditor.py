@@ -392,7 +392,7 @@ class Main(Frame):
         self.toolbutton_project_setting = ('button', 'プロジェクト設定', [ProjectFileSettingWindow], self.Icons.project_settings)
         self.toolbutton_setting = ('button', '設定', [self.open_SettingWindow], self.Icons.settings)
         self.toolbutton_search = ('button', '検索', [self.open_SearchWindow], self.Icons.search)
-        self.toolbutton_replace = ('button', '置換', [lambda: self.open_SearchWindow('1')], self.Icons.replace)
+        self.toolbutton_replace = ('button', '置換', [self.open_ReplaceWindow], self.Icons.replace)
         self.toolbutton_import = ('button', 'インポート', [ImportWindow], self.Icons.import_)
         self.toolbutton_export = ('button', 'エクスポート', [ExportWindow], self.Icons.export)
         self.toolbutton_template = ('button', '定型文', [self.open_TemplateWindow], self.Icons.template)
@@ -1970,6 +1970,10 @@ class Main(Frame):
         if not mode in ('0', '1'):
             mode = '0'
         return self.open_sub_window('search', mode, searchtext)
+
+    def open_ReplaceWindow(self, _=None, searchtext=''):
+        '''重複を防ぐ'''
+        return self.open_sub_window('search', '1', searchtext)
 
     def open_TemplateWindow(self, *_):
         '''重複を防ぐ'''
