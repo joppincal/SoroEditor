@@ -616,8 +616,6 @@ class Main(Frame):
         self.master.bind('<Alt-,>', focus_to_left)
         self.master.bind('<Alt-Left>', focus_to_left)
         self.master.bind('<Control-l>', self.select_line)
-        self.master.bind('<Control-Return>', lambda e: self.newline(e, 1))
-        self.master.bind('<Control-Shift-Return>', lambda e: self.newline(e, 0))
         self.master.bind('<Down>', focus_to_bottom)
         self.master.bind('<Return>', focus_to_bottom)
         self.master.bind('<Control-^>', test_focus_get)
@@ -769,6 +767,9 @@ class Main(Frame):
             w.bind('<Control-o>', self.file_open)
             for event in ['<Alt-Up>', '<Alt-Control-Up>', '<Alt-Down>', '<Alt-Control-Down>']:
                 w.bind(event, self.handle_KeyPress_event_of_swap_lines)
+            w.bind('<Return>', lambda e: self.newline(e, 1))
+            w.bind('<Control-Return>', lambda e: self.newline(e, 0), '+')
+            w.bind('<Shift-Return>', lambda e: print(end=''), '+')
 
         self.set_text_widget_editable(mode=2)
 
@@ -1620,7 +1621,7 @@ class Main(Frame):
         elif widget_class == 'TEntry':
             pass
 
-    def newline(self, e, mode=0):
+    def newline(self, event, mode=0):
         '''
         行を追加する
 
@@ -1628,20 +1629,24 @@ class Main(Frame):
             mode=0: 上に追加
             mode=1: 下に追加
         '''
-        if type(e.widget) == Text:
+        widget = event.widget
 
-            self.set_text_widget_editable(mode=1)
+        self.set_text_widget_editable(mode=1)
 
-            e.widget.delete(INSERT+'-1c', INSERT)
-            if mode == 0: insert = e.widget.index(INSERT+ ' linestart')
-            elif mode == 1: insert = e.widget.index(INSERT+ '+1line linestart')
-            for w in self.maintexts:
-                w.insert(insert, '\n')
-                w.see(e.widget.index(INSERT))
-            if mode == 0: e.widget.mark_set(INSERT, INSERT+'-1line linestart')
-            elif mode == 1: e.widget.mark_set(INSERT, INSERT+'+1line linestart')
+        if mode == 0:
+            insert = widget.index(INSERT+' linestart')
+        if mode == 1:
+            insert = widget.index(INSERT+'+1line linestart')
 
-            self.set_text_widget_editable(mode=0)
+        for w in self.maintexts:
+            w.insert(insert, '\n')
+            w.see(insert)
+
+        widget.mark_set(INSERT, insert)
+
+        self.set_text_widget_editable(mode=0)
+
+        return 'break'
 
     def insert_template_to_maintext(self, num):
         text = self.templates[num]
