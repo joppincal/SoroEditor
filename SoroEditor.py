@@ -770,6 +770,7 @@ class Main(Frame):
             w.bind('<Return>', lambda e: self.newline(e, 1))
             w.bind('<Control-Return>', lambda e: self.newline(e, 0), '+')
             w.bind('<Shift-Return>', lambda e: print(end=''), '+')
+            w.bind('<Control-Delete>', self.deleteline)
 
         self.set_text_widget_editable(mode=2)
 
@@ -1641,6 +1642,25 @@ class Main(Frame):
         for w in self.maintexts:
             w.insert(insert, '\n')
             w.see(insert)
+
+        widget.mark_set(INSERT, insert)
+
+        self.set_text_widget_editable(mode=0)
+
+        return 'break'
+
+    def deleteline(self, event):
+        '''
+        行を削除する
+        '''
+        widget = event.widget
+
+        self.set_text_widget_editable(mode=1)
+
+        insert = widget.index(INSERT+' linestart')
+
+        for w in self.maintexts:
+            w.delete(insert, insert+'+1line')
 
         widget.mark_set(INSERT, insert)
 
