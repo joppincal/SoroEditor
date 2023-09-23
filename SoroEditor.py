@@ -1904,8 +1904,8 @@ class Main(Frame):
         new_data = yaml.safe_dump(current_data, allow_unicode=True, canonical=True)
 
         # 新しいデータにタイムスタンプを追加する
-        timestamp = datetime.datetime.now().strftime('# %Y-%m-%d-%H-%M-%S\n')
-        new_data: list[str] = list(new_data.splitlines(True))
+        timestamp = datetime.datetime.now().strftime('# %Y-%m-%d %H:%M:%S\n')
+        new_data = list(new_data.splitlines(True))
         new_data.insert(1, timestamp)
         new_data.append('\n')
 
@@ -1917,30 +1917,25 @@ class Main(Frame):
             old_data = []
 
         # 新しいデータをバックアップデータに追加する
-        old_data = new_data + old_data
+        new_data += old_data
 
-        # 最大50個に削る
-        old_data.reverse()
-        old_data = iter(old_data)
-        num_of_separator = 0
+        # 最大個数に削る
         backup_data = []
-        while num_of_separator < backup_max:
-            try:
-                data = next(old_data)
-            except StopIteration:
-                num_of_separator = backup_max
-            else:
-                backup_data.append(data)
-                if data == '---\n':
-                    num_of_separator = num_of_separator + 1
-        backup_data.reverse()
+        num_of_separator = 0
+        for line in new_data:
+            if line == '---\n':
+                num_of_separator += 1
+            if num_of_separator > backup_max:
+                break
+            backup_data.append(line)
 
         # バックアップデータの冒頭にHow toを記述する
         how_to = [
             '# このファイルはSoroEditorプロジェクトファイルのバックアップファイル\n',
-            '# ハイフンによる区切り (---)によって仕切られた一つ一つがバックアップ\n',
+            '# ハイフンによる区切り (---) によって仕切られた一つ一つがバックアップ\n',
             '# 一つを選んでコピーし、任意のファイルに貼り付けることで復旧可能\n'
             ]
+        backup_data = [line for line in backup_data if line not in how_to]
         backup_data[0:0] = how_to
 
 
