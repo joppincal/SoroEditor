@@ -1468,14 +1468,12 @@ class Main(Frame):
         except re.error:
             results = []
             if title and entry:
-                messagedialog = MessageDialog(
-                    '正規表現エラー\n検索内容を確認してください',
-                    title + ' 正規表現エラー',
-                    alert=True,
-                    buttons=['OK'],
-                    parent=entry)
-                messagedialog.show(app.md_position)
-                entry.focus()
+                entry.config(bootstyle='danger')
+                entry.config(foreground=self.windowstyle.colors.danger)
+        else:
+            if title and entry:
+                entry.config(bootstyle='primary')
+                entry.config(foreground=self.windowstyle.colors.primary)
         return results
 
     def cut_copy(self, mode=0):
