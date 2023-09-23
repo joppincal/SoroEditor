@@ -68,6 +68,7 @@ class Main(Frame):
                         'autosave_frequency': 60000,
                         'backup': True,
                         'backup_frequency': 300000,
+                        'backup_max': 50,
                         'between_lines': 10,
                         'button_style': 'icon_with_text',
                         'columns': {'number': 3, 'percentage': [15, 55, 30]},
@@ -165,6 +166,8 @@ class Main(Frame):
         self.do_backup: bool = self.settings['backup']
         ## バックアップ頻度
         self.backup_frequency: int = self.settings['backup_frequency']
+        ## バックアップデータ最大数
+        self.backup_max: int = self.settings['backup_max']
         ## 定型文
         self.templates = {i: self.settings['templates'].get(i, '') for i in range(10)}
         ## 検索エンジン
@@ -1886,8 +1889,6 @@ class Main(Frame):
             return
         log.info('---Backup---')
 
-        backup_max = 50
-
         # バックアップファイル名・パスを生成する
         backup_filename = ''
         if self.filepath:
@@ -1923,7 +1924,7 @@ class Main(Frame):
         for line in new_data:
             if line == '---\n':
                 num_of_separator += 1
-            if num_of_separator > backup_max:
+            if num_of_separator > self.backup_max:
                 break
             backup_data.append(line)
 
