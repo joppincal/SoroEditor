@@ -75,7 +75,6 @@ class Main(Frame):
                         'display_line_number': True,
                         'font': {'family': 'nomal', 'size': 12},
                         'geometry': '1600x1000',
-                        'ms_align_the_lines': 50,
                         'recently_files': [],
                         'selection_line_highlight': True,
                         'search_engines': {
@@ -204,8 +203,6 @@ class Main(Frame):
             self.initialdir = os.path.dirname(self.recently_files[0])
         except (IndexError, TypeError):
             self.initialdir = ''
-        self.text_place = (1.0, 1.0)
-        self.ms_align_the_lines = self.settings['ms_align_the_lines']
         self.md_position = (int(self.winfo_screenwidth()/2-250), int(self.winfo_screenheight()/2-100))
 
         # メニューバーの作成
@@ -649,7 +646,6 @@ class Main(Frame):
 
         self.master.after(500, self.change_window_title)
         self.now_time_set()
-        self.master.after(self.ms_align_the_lines, self.align_the_lines)
         self.master.after(self.autosave_frequency, self.autosave)
         self.master.after(self.backup_frequency, self.backup)
 
@@ -940,7 +936,6 @@ class Main(Frame):
             else:
                 self.filepath = file_path_to_open
                 log.info(f'Succeed opening file: {self.filepath}')
-                self.align_the_lines(1.0, 1.0, False)
 
         return 'break'
 
@@ -1743,11 +1738,13 @@ class Main(Frame):
                 self.line_number_box.tag_config('insert_line', underline=False, font=hilight_font)
 
     def yscrollcommand(self, *args):
+        print(*args)
         self.vbar.set(*args)
         for text in self.textboxes:
             text.yview('moveto', args[0])
 
     def vbarcommand(self, *args):
+        print(*args)
         for text in self.textboxes:
             text.yview(*args)
 
@@ -3232,8 +3229,6 @@ class SearchWindow(Toplevel):
         app.maintexts[line].focus()
         app.maintexts[line].mark_set(INSERT, f'{row}.{span[1]}')
         app.maintexts[line].see(f'{row}.{span[1]}')
-        app.align_the_lines(repeat=False)
-        app.maintexts[line].see(f'{row}.{span[1]}')
         app.maintexts[line].tag_add('search_selected', f'{row}.{span[0]}', f'{row}.{span[1]}')
         app.statusbar_element_reload()
         app.highlight()
@@ -3554,7 +3549,6 @@ class BookmarkWindow(Toplevel):
         maintexts_index = int(place[0])
         line = float(place[1])+1
 
-        app.align_the_lines(line, line, False)
 
         self.attributes('-topmost', True)
         app.maintexts[maintexts_index].focus()
