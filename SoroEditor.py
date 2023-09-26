@@ -1738,13 +1738,11 @@ class Main(Frame):
                 self.line_number_box.tag_config('insert_line', underline=False, font=hilight_font)
 
     def yscrollcommand(self, *args):
-        print(*args)
         self.vbar.set(*args)
         for text in self.textboxes:
             text.yview('moveto', args[0])
 
     def vbarcommand(self, *args):
-        print(*args)
         for text in self.textboxes:
             text.yview(*args)
 
