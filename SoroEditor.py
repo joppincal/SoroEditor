@@ -294,7 +294,7 @@ class Main(Frame):
         # 各パーツを製作
         self.f1 = Frame(self.master, padding=5)
         self.f2 = Frame(self.master)
-        self.vbar = Scrollbar(self.f2, command=self.vbar_command, style=ROUND, takefocus=False)
+        self.vbar = Scrollbar(self.f2, command=self.vbarcommand, style=ROUND, takefocus=False)
 
         self.columns:list[Frame] = []
         self.entrys:list[Entry] = []
@@ -758,6 +758,8 @@ class Main(Frame):
             self.maintexts[i].insert(END, self.data[i]['text'])
 
         self.textboxes = self.maintexts + [self.dummy_maintext]
+        for text in self.textboxes:
+            text['yscrollcommand'] = self.yscrollcommand
         try:
             self.textboxes.append(self.line_number_box)
         except AttributeError as e:
@@ -1740,70 +1742,14 @@ class Main(Frame):
                 self.line_number_box.tag_add('insert_line', insert+' linestart', insert+' lineend')
                 self.line_number_box.tag_config('insert_line', underline=False, font=hilight_font)
 
-    def vbar_command(self, e=None, a=None, b=None):
-        '''
-        縦スクロールバーが動いたときのメソッド
-        '''
-        self.dummy_maintext.yview(e, a, b)
+    def yscrollcommand(self, *args):
+        self.vbar.set(*args)
+        for text in self.textboxes:
+            text.yview('moveto', args[0])
 
-    def align_the_lines(self, top:float=None, bottom:float=None, repeat=True):
-        '''
-        位置を合わせる
-        '''
-        if self.wrap != NONE:
-            return
-
-        height = self.textboxes[0].winfo_height()
-
-        # 各行の表示位置を確認し、変更を検知する
-        if top and bottom:
-            self.text_place = (top, bottom)
-        else:
-            l = [(float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
-                            for w in self.textboxes]
-            text_places = []
-            for t in l:
-                if t[0] != self.text_place[0]:
-                    text_places.append(t)
-            if not text_places:
-                self.text_place = l[0]
-
-            if len(text_places) == 1: self.text_place = text_places[0]
-
-        # ダミーテキストの行数を調整
-        self.set_dummy_text_lines()
-
-        if self.text_place[1] > self.line_count(self.dummy_maintext):
-            self.text_place = list(self.text_place)
-            self.text_place[1] = float(self.line_count(self.dummy_maintext))
-            self.text_place = tuple(self.text_place)
-
-        # 場所を設定
-        for w in self.textboxes:
-            w.see(self.text_place[1])
-            w.see(self.text_place[1])
-            w.see(self.text_place[1])
-            w.see(self.text_place[0])
-            w.see(self.text_place[0])
-            w.see(self.text_place[0])
-
-        # ずれを検知し、修正
-        if not all([True
-                    if f == self.maintexts[0].index('@0,0')
-                    else False
-                    for f
-                    in [w.index('@0,0') for w in self.textboxes]]):
-            for w in self.textboxes:
-                w.see('0.0')
-                w.see(self.text_place[1])
-                w.see(self.text_place[0])
-            self.text_place = (float((w.index('@0,0'))), float(w.index(f'@0,{height}')))
-        self.show_cursor_at_bottom_line()
-        if repeat:
-            self.master.after(self.ms_align_the_lines, self.align_the_lines)
-
-        # 縦スクロールバーを設定
-        self.vbar.set(*self.dummy_maintext.yview())
+    def vbarcommand(self, *args):
+        for text in self.textboxes:
+            text.yview(*args)
 
     def show_cursor_at_bottom_line(self, e=None):
         '''
