@@ -733,33 +733,17 @@ class Main(Frame):
             # Textを作成
             self.maintexts[i].pack(fill=BOTH, expand=YES, padx=5, pady=10)
 
-        ## ダミーテキスト（スクロールバーのための）
-        self.dummy_column = (Frame(self.f1_2, padding=0))
-        self.dummy_entry = (Entry(self.dummy_column, font=self.font))
-        self.dummy_maintext = (
-            Text(
-                self.dummy_column,
-                wrap=self.wrap,
-                font=self.font,
-                spacing2=self.between_lines,
-                spacing3=self.between_lines
-                )
-            )
-        self.dummy_column.place(relx=1.0, rely=0.0, relwidth=1.0, relheight=1.0)
-        self.dummy_entry.pack(fill=X, expand=False, padx=5, pady=0)
-        self.dummy_maintext.pack(fill=BOTH, expand=YES, padx=5, pady=10)
-
         for i in range(self.number_of_columns):
             self.entrys[i].insert(END, self.data[i]['title'])
             self.maintexts[i].insert(END, self.data[i]['text'])
 
-        self.textboxes = self.maintexts + [self.dummy_maintext]
-        for text in self.textboxes:
-            text['yscrollcommand'] = self.yscrollcommand
+        self.textboxes = self.maintexts.copy()
         try:
             self.textboxes.append(self.line_number_box)
         except AttributeError as e:
             pass
+        for text in self.textboxes:
+            text['yscrollcommand'] = self.yscrollcommand
 
         self.align_number_of_rows()
 
@@ -780,13 +764,13 @@ class Main(Frame):
         各列の行数を揃えるメソッド
         '''
         self.set_text_widget_editable(mode=1)
+        # 最大行数を取得する
+        max_line = max([self.line_count(w, True) for w in self.textboxes])
         # 各列の行数を揃える
-        for i in range(self.number_of_columns):
+        for w in self.textboxes:
             # 行数の差分を計算する
-            line_count_diff = 10000 - self.line_count(self.maintexts[i])
-            if line_count_diff > 0:
-                # 行数が足りない場合、不足分の改行を追加する
-                self.maintexts[i].insert(END, '\n' * line_count_diff)
+            line_count_diff = max_line - self.line_count(w, True)
+            w.insert(END, '\n'*line_count_diff)
         # カーソルを最初の列に移動する
         if e:
             self.maintexts[0].see(INSERT)
@@ -1724,61 +1708,33 @@ class Main(Frame):
         '''
         if self.master.focus_get() in self.maintexts:
             insert = self.master.focus_get().index(INSERT)
-            hilight_font = self.font.copy()
-            hilight_font.config(weight='normal', slant='roman', underline=True)
-            for w in self.maintexts: # self.textboxesにし、Main.line_number_boxにも適用しようとしたところ、日本語入力の再変換候補があらぶってしまうため断念
+            highlight_font = self.font.copy()
+            highlight_font.config(weight='normal', slant='roman', underline=True)
+            for w in self.textboxes:
                 w.mark_set(INSERT, insert)
                 w.tag_delete('insert_line')
                 w.tag_add('insert_line', insert+' linestart', insert+' lineend')
-                w.tag_config('insert_line', underline=False, font=hilight_font)
-            if self.display_line_number: # 上記の問題はこのようにする事で解決。Main.textboxesに含まれるMain.dummy_maintextの影響か？
-                self.line_number_box.mark_set(INSERT, insert)
-                self.line_number_box.tag_delete('insert_line')
-                self.line_number_box.tag_add('insert_line', insert+' linestart', insert+' lineend')
-                self.line_number_box.tag_config('insert_line', underline=False, font=hilight_font)
+                w.tag_config('insert_line', underline=False, font=highlight_font)
 
     def yscrollcommand(self, *args):
-        self.vbar.set(*args)
         for text in self.textboxes:
             text.yview('moveto', args[0])
+        proportion = self.seek_vbar_proportion()
+        args = [float(arg)*proportion for arg in args]
+        self.vbar.set(*args)
 
     def vbarcommand(self, *args):
+        args = list(args)
+        if args[0] == 'moveto':
+            proportion = self.seek_vbar_proportion()
+            args[1] = f'{float(args[1])/proportion}'
         for text in self.textboxes:
             text.yview(*args)
 
-    def show_cursor_at_bottom_line(self, e=None):
-        '''
-        カーソルが最下端の行にあり、最下端の行が隠れているとき、表示する
-        '''
-        widget = self.master.focus_get()
-        if not widget:
-            widget = self.maintexts[0]
-        if widget.winfo_class() == 'Text':
-            height = widget.winfo_height()
-            bottom = widget.index(f'@0,{height}')
-            if bottom == widget.index(INSERT+' linestart'):
-                for w in self.textboxes:
-                    w.see(float(bottom)+0.0)
-
-    def set_dummy_text_lines(self):
-        '''
-        ダミーテキストの行数を調整するメソッド
-        '''
-        # メインテキストの中で最も多い行数に50行を加えた値を計算する
-        max_line_count = max([self.line_count(w) for w in self.maintexts]) + 50
-        # ダミーテキストの行数を計算する
-        dummy_line_count = self.line_count(self.dummy_maintext)
-        # メインテキストの行数とダミーテキストの行数の差分を計算する
-        line_count_diff = dummy_line_count - max_line_count
-        # ダミーテキストの行数がメインテキストの行数よりも多い場合、超過分だけ行を削除する
-        if line_count_diff > 0:
-            for _ in range(line_count_diff):
-                self.dummy_maintext.delete(0.0, float(line_count_diff))
-        # ダミーテキストの行数がメインテキストの行数よりも少ない場合、不足分だけ行を追加する
-        if line_count_diff < 0:
-            line_count_diff = -line_count_diff
-            for _ in range(line_count_diff):
-                self.dummy_maintext.insert(END, f'd\n')
+    def seek_vbar_proportion(self):
+        max_line = max([self.line_count(w) for w in self.maintexts]) + 50
+        max_line2 = max([self.line_count(w, True) for w in self.maintexts])
+        return max_line2 / max_line
 
     def set_text_widget_editable(self, e=None, mode=0, widget=None):
         '''
