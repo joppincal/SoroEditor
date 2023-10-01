@@ -10,6 +10,7 @@ import re
 import sys
 import webbrowser
 from collections import deque, namedtuple
+from importlib import metadata
 from random import choice
 import csv
 import logging
@@ -27,7 +28,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 
 
-__version__ = '0.5.1'
+__version__ = metadata.version('soroeditor')
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.abspath(os.path.join(__file__, '../..')), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()

@@ -1,10 +1,14 @@
 [tool.poetry]
 name = "soroeditor"
-version = "0.5.1"
+version = "0.0.0"
 description = "SoroEditor is a text editor that allows multi-column editing."
 authors = ["joppincal <106348367+joppincal@users.noreply.github.com>"]
 license = "MIT"
 readme = "README.md"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+style = "pep440"
 
 [tool.poetry.dependencies]
 python = "^3.11"
