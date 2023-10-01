@@ -2585,19 +2585,34 @@ Ctrl+R:           前回使用したファイルを開く
 Ctrl+S:           上書き保存
 Ctrl+Shift+S:     名前をつけて保存
 Ctrl+Shift+E:     エクスポート
-Ctrl+Shift+P:     設定
+Ctrl+Shift+I:     インポート
+F5:               再読み込み
+
+Ctrl+X:           カット
+Ctrl+C:           コピー
+Ctrl+V:           ペースト
+Ctrl+A:           すべて選択
+Ctrl+L:           1行選択
+Enter:            1行追加（下）
+Ctrl+Enter:       1行追加（上）
+Shift+Enter:      通常の改行
+Ctrl+Delete:      1行削除
+Ctrl+Z:           取り消し
+Ctrl+Shift+Z:     取り消しを戻す
 
 Ctrl+F:           検索
 Ctrl+Shift+F:     置換
 
-Ctrl+Z:           取り消し
-Ctrl+Shift+Z:     取り消しを戻す
-Ctrl+Enter:       1行追加（下）
+Ctrl+T:           定型文
+Ctrl+1-0:         各定型文の入力
 
-Ctrl+Shift+Enter: 1行追加（上）
-Ctrl+L:           1行選択
+Ctrl+B:           付箋
+
+Ctrl+Shift+P:     設定
+
 Ctrl+Q, Alt+<:    左の列に移動
-Ctrl+W, Alt+>:    右の列に移動\n''', 'text')
+Ctrl+W, Alt+>:    右の列に移動
+''', 'text')
         t.insert(END, '検索/置換\n', 'h1')
         t.insert(END,
 '''検索/置換機能はメニューバーから、またはショートカットキーからアクセスできます
