@@ -10,6 +10,7 @@ SoroEditor.build
 SoroEditor.dist
 SoroEditor.onefile-build
 __pycache__
+poetry.lock
 *.exe
 
 # Others
