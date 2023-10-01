@@ -345,8 +345,8 @@ class Main(Frame):
             return ('label', text)
         ## ショートカットキー
         self.hotkeys1 = ('label', '[Ctrl+O]: 開く  [Ctrl+S]: 上書き保存  [Ctrl+Shift+S]: 名前をつけて保存  [Ctrl+R]: 最後に使ったファイルを開く（起動直後のみ）')
-        self.hotkeys2 = ('label', '[Ctrl+Enter]: 1行追加(下)  [Ctrl+Shift+Enter]: 1行追加(上)  [Ctrl+F]: 検索  [Ctrl+Shift+F]: 置換  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す')
-        self.hotkeys3 = ('label', '[Ctrl+Q][Alt+Q][Alt+,]: 左に移る  [Ctrl+W][Alt+W][Alt+.]: 右に移る')
+        self.hotkeys2 = ('label', '[Enter]: 1行追加(下)  [Ctrl+Enter]: 1行追加(上)  [Shift+Enter]: 通常改行  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す  [Ctrl+F]: 検索  [Ctrl+Shift+F]: 置換')
+        self.hotkeys3 = ('label', '[Ctrl+Q][Alt+Q][Alt+<]: 左に移る  [Ctrl+W][Alt+W][Alt+>]: 右に移る')
         ## 各機能情報
         self.infomation = ('label', f'自動保存: {self.do_autosave}, バックアップ: {self.do_backup}')
         ## 顔文字
