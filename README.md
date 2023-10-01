@@ -9,7 +9,7 @@
 列の動きを同期して見えている行をそろえることができます。
 
 ## スクリーンショット
-- lumenテーマ（デフォルト）
+- literaテーマ（デフォルト）
 ![Screenshot-1](/image/screenshot_lumen.png)
 - superheroテーマ
 ![Screenshot-2](/image/screenshot_superhero.png)
