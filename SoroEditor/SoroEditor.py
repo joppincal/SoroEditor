@@ -29,22 +29,9 @@ from ttkbootstrap.themes.standard import *
 
 __version__ = '0.5.1'
 __projversion__ = '0.3.8'
-with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+with open(os.path.join(os.path.abspath(os.path.join(__file__, '../..')), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
 
-def log_setting():
-    global log
-    if not os.path.exists('./log'):
-        os.mkdir('./log')
-    log = logging.getLogger(__name__)
-    log.setLevel(logging.DEBUG)
-    formater = logging.Formatter('{asctime} {name:<8s} {levelname:<8s} {message}', style='{')
-    handler = logging.handlers.RotatingFileHandler(
-        filename='./log/soroeditor.log',
-        encoding='utf-8',
-        maxBytes=102400)
-    handler.setFormatter(formater)
-    log.addHandler(handler)
 
 class Main(Frame):
 
@@ -277,7 +264,7 @@ class Main(Frame):
         ## メニューバー - ヘルプ
         self.menu_help = Menu(menubar)
         self.menu_help.add_command(label='ヘルプを表示(H)', command=HelpWindow, accelerator='F1', underline=7)
-        self.menu_help.add_command(label='初回起動メッセージを表示(F)', command=lambda: self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'hello.txt')), underline=13)
+        self.menu_help.add_command(label='初回起動メッセージを表示(F)', command=lambda: self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'src/hello.txt')), underline=13)
         self.menu_help.add_command(label='SoroEditorについて(A)', command=AboutWindow, underline=16)
         self.menu_help.add_command(label='ライセンス情報(L)', command=ThirdPartyNoticesWindow, underline=8)
         menubar.add_cascade(label='ヘルプ(H)', menu=self.menu_help, underline=4)
@@ -442,7 +429,7 @@ class Main(Frame):
                 return method
 
         # ステータスバー作成メソッド
-        def make_statusbar_element(type:str='', text:str='', command:list=[], image:PhotoImage=None, textvariable:StringVar=None):
+        def make_statusbar_element(type_:str='', text:str='', command:list=[], image:PhotoImage=None, textvariable:StringVar=None):
             '''
             Make statusbar and toolbar elements.
 
@@ -454,9 +441,9 @@ class Main(Frame):
             '''
             widget = None
 
-            if type == 'label':
+            if type_ == 'label':
                 widget = Label(text=text, image=image, textvariable=textvariable)
-            if type == 'button':
+            if type_ == 'button':
                 if self.button_style == 'icon_only':
                     compound = None
                 elif self.button_style == 'text_only':
@@ -464,16 +451,14 @@ class Main(Frame):
                     image = None
                 else: # icon_with_textの場合及びそのほか不適切な文字列の場合
                     compound = LEFT
-
                 widget = Button(text=text, image=image, takefocus=False, compound=compound, textvariable=textvariable)
-
                 if self.windowstyle.theme_use() in  [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'light']:
                     widget.config(bootstyle='light')
                 elif self.windowstyle.theme_use() in [t for t in STANDARD_THEMES.keys() if STANDARD_THEMES[t]['type'] == 'dark']:
                     widget.config(bootstyle='dark')
 
             if widget:
-                if __builtins__.type(command) == dict:
+                if type(command) == dict:
                     for sequence, func in command.items():
                         widget.bind(sequence, func)
                 elif len(command) == 1:
@@ -638,7 +623,7 @@ class Main(Frame):
 
         # 設定ファイルが存在しなかった場合、初回起動と扱う
         if initialization:
-            self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'hello.txt'))
+            self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'src/hello.txt'))
 
         # ファイルを渡されているとき、そのファイルを開く
         if len(sys.argv) > 1:
@@ -3655,7 +3640,8 @@ class Icons:
     def __make_image_path(self, path) -> str:
         return os.path.join(os.path.dirname(__file__), path)
 
-if __name__ == '__main__':
+def main():
+    global app
     log_setting()
     log.info('===Start Application===')
     root = Window(title='SoroEditor', minsize=(800, 500))
@@ -3663,3 +3649,20 @@ if __name__ == '__main__':
     app = Main(master=root)
     app.mainloop()
     log.info('===Close Application===')
+
+def log_setting():
+    global log
+    if not os.path.exists('./log'):
+        os.mkdir('./log')
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.DEBUG)
+    formater = logging.Formatter('{asctime} {name:<8s} {levelname:<8s} {message}', style='{')
+    handler = logging.handlers.RotatingFileHandler(
+        filename='./log/soroeditor.log',
+        encoding='utf-8',
+        maxBytes=102400)
+    handler.setFormatter(formater)
+    log.addHandler(handler)
+
+if __name__ == '__main__':
+    main()
