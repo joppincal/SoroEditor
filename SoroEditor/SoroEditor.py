@@ -277,7 +277,7 @@ class Main(Frame):
         ## メニューバー - ヘルプ
         self.menu_help = Menu(menubar)
         self.menu_help.add_command(label='ヘルプを表示(H)', command=HelpWindow, accelerator='F1', underline=7)
-        self.menu_help.add_command(label='初回起動メッセージを表示(F)', command=lambda: self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'hello.txt')), underline=13)
+        self.menu_help.add_command(label='初回起動メッセージを表示(F)', command=lambda: self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'src/hello.txt')), underline=13)
         self.menu_help.add_command(label='SoroEditorについて(A)', command=AboutWindow, underline=16)
         self.menu_help.add_command(label='ライセンス情報(L)', command=ThirdPartyNoticesWindow, underline=8)
         menubar.add_cascade(label='ヘルプ(H)', menu=self.menu_help, underline=4)
@@ -638,7 +638,7 @@ class Main(Frame):
 
         # 設定ファイルが存在しなかった場合、初回起動と扱う
         if initialization:
-            self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'hello.txt'))
+            self.file_open(file_path_to_open=os.path.join(os.path.dirname(__file__), 'src/hello.txt'))
 
         # ファイルを渡されているとき、そのファイルを開く
         if len(sys.argv) > 1:
