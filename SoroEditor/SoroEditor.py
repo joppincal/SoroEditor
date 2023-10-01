@@ -29,7 +29,7 @@ from ttkbootstrap.themes.standard import *
 
 __version__ = '0.5.1'
 __projversion__ = '0.3.8'
-with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+with open(os.path.join(os.path.abspath(os.path.join(__file__, '../..')), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
 
 def log_setting():
