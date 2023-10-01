@@ -27,7 +27,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 
 
-__version__ = '0.4.1'
+__version__ = '0.5.0'
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
