@@ -27,7 +27,7 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 
 
-__version__ = '0.5.0'
+__version__ = '0.5.1'
 __projversion__ = '0.3.8'
 with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
     __thirdpartynotices__ = f.read()
@@ -2664,7 +2664,7 @@ class AboutWindow(Toplevel):
         frame.pack(fill=BOTH, expand=True)
         main = Text(frame)
 
-        icon = Image.open('src/icon/icon.png')
+        icon = Image.open(os.path.join(os.path.dirname(__file__), 'src/icon/icon.png'))
         icon = icon.resize((300, 300))
         icon = ImageTk.PhotoImage(icon)
         iconlabel = Label(self, image=icon)
