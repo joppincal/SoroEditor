@@ -345,8 +345,8 @@ class Main(Frame):
             return ('label', text)
         ## ショートカットキー
         self.hotkeys1 = ('label', '[Ctrl+O]: 開く  [Ctrl+S]: 上書き保存  [Ctrl+Shift+S]: 名前をつけて保存  [Ctrl+R]: 最後に使ったファイルを開く（起動直後のみ）')
-        self.hotkeys2 = ('label', '[Ctrl+Enter]: 1行追加(下)  [Ctrl+Shift+Enter]: 1行追加(上)  [Ctrl+F]: 検索  [Ctrl+Shift+F]: 置換  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す')
-        self.hotkeys3 = ('label', '[Ctrl+Q][Alt+Q][Alt+,]: 左に移る  [Ctrl+W][Alt+W][Alt+.]: 右に移る')
+        self.hotkeys2 = ('label', '[Enter]: 1行追加(下)  [Ctrl+Enter]: 1行追加(上)  [Shift+Enter]: 通常改行  [Ctrl+Z]: 取り消し  [Ctrl+Shift+Z]: 取り消しを戻す  [Ctrl+F]: 検索  [Ctrl+Shift+F]: 置換')
+        self.hotkeys3 = ('label', '[Ctrl+Q][Alt+Q][Alt+<]: 左に移る  [Ctrl+W][Alt+W][Alt+>]: 右に移る')
         ## 各機能情報
         self.infomation = ('label', f'自動保存: {self.do_autosave}, バックアップ: {self.do_backup}')
         ## 顔文字
@@ -2585,23 +2585,48 @@ Ctrl+R:           前回使用したファイルを開く
 Ctrl+S:           上書き保存
 Ctrl+Shift+S:     名前をつけて保存
 Ctrl+Shift+E:     エクスポート
-Ctrl+Shift+P:     設定
+Ctrl+Shift+I:     インポート
+F5:               再読み込み
+
+Ctrl+X:           カット
+Ctrl+C:           コピー
+Ctrl+V:           ペースト
+Ctrl+A:           すべて選択
+Ctrl+L:           1行選択
+Enter:            1行追加（下）
+Ctrl+Enter:       1行追加（上）
+Shift+Enter:      通常の改行
+Ctrl+Delete:      1行削除
+Ctrl+Z:           取り消し
+Ctrl+Shift+Z:     取り消しを戻す
 
 Ctrl+F:           検索
 Ctrl+Shift+F:     置換
 
-Ctrl+Z:           取り消し
-Ctrl+Shift+Z:     取り消しを戻す
-Ctrl+Enter:       1行追加（下）
+Ctrl+T:           定型文
+Ctrl+1-0:         各定型文の入力
 
-Ctrl+Shift+Enter: 1行追加（上）
-Ctrl+L:           1行選択
+Ctrl+B:           付箋
+
+Ctrl+Shift+P:     設定
+
 Ctrl+Q, Alt+<:    左の列に移動
-Ctrl+W, Alt+>:    右の列に移動\n''', 'text')
+Ctrl+W, Alt+>:    右の列に移動
+''', 'text')
         t.insert(END, '検索/置換\n', 'h1')
         t.insert(END,
 '''検索/置換機能はメニューバーから、またはショートカットキーからアクセスできます
 検索/置換にはPythonの正規表現を用いる事もできます\n''', 'text')
+        t.insert(END, '定型文\n', 'h1')
+        t.insert(END,
+'''メニューバー、もしくはショートカットキーからアクセスできます
+あらかじめ設定している文章を簡単に入力できる機能です
+設定は定型文ウィンドウから行い、設定ファイル毎に保存されます\n''', 'text')
+        t.insert(END, '付箋\n', 'h1')
+        t.insert(END,
+'''メニューバー、もしくはショートカットキーからアクセスできます
+あらかじめ設定した内容が含まれている部分を一覧することが出来ます
+設定は付箋ウィンドウから行い、プロジェクトファイル毎に保存されます\n''', 'text')
         t.insert(END, 'プロジェクトファイル\n', 'h1')
         t.insert(END,
 '''プロジェクトファイルはYAML形式のファイルの拡張子を*.sepに変更したものです

@@ -1,23 +1,30 @@
 0:
   text: "概要\n\n\n\n\n設定可能項目\n設定(S)\tから\n\n\n\n\n\n\n\n\n\n\n\n\n\nホットキー\n\n\n\n\n\n\
-    \n\n\n\n\n\n\n\n\n\n\n\n\nプロジェクトファイル\n\n\n設定ファイル\n\n\n\n\n連絡先"
+    \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nプロジェクトファイル\n\n\n設定ファイル\n\
+    \n\n\n\n連絡先"
   title: hello.txt
 1:
   text: "SoroEditor（そろエディタ）は「並列テキストエディタ」です\n複数列が揃って並び、それぞれテキストエディタとして編集できます\nスクロールを同期できます\n\
     \n\n・列数/列幅\n・フォント（ファミリー・サイズ）\n・表示テーマ\n・画面端の折り返し（なし\t文字で折り返し\t単語で折り返し（英語向け））\n\
     ・ステータスバー（ウィンドウ下部の、様々な情報が記述されている場所）\n・ツールバー（ウィンドウ上部のボタンが配置された場所）\n・編集中の行の強調表示（デフォルトでは下線）\n\
     ・行番号\n・起動時のウィンドウサイズ\n・自動保存\n・バックアップ\n\n*列数・列幅に関しては、プロジェクトファイルごとに設定できます\nファイル(F)→プロジェクト設定(F)\t\
-    から\n\nCtrl+O: ファイルを開く\nCtrl+R: 前回使用したファイルを開く\nCtrl+S: 上書き保存\nCtrl+Shift+S: 名前をつけて保存\n\
-    Ctrl+Shift+E: エクスポート\nCtrl+Shift+P: 設定\n\nCtrl+F: 検索\nCtrl+Shift+F: 置換\n\nCtrl+Z:\
-    \ 取り消し\nCtrl+Shift+Z: 取り消しを戻す\nCtrl+Enter: 1行追加（下）\n\nCtrl+Shift+Enter: 1行追加（上）\n\
-    Ctrl+L: 1行選択\nCtrl+Q, Alt+<: 左の列に移動\nCtrl+W, Alt+>: 右の列に移動\n\nプロジェクトファイルはYAML形式のファイルの拡張子を変更したものです\n\
+    から\n\nCtrl+O:           ファイルを開く\nCtrl+R:           前回使用したファイルを開く\nCtrl+S:    \
+    \       上書き保存\nCtrl+Shift+S:     名前をつけて保存\nCtrl+Shift+E:     エクスポート\nCtrl+Shift+I:\
+    \     インポート\nF5:               再読み込み\n\nCtrl+X:           カット\nCtrl+C:       \
+    \    コピー\nCtrl+V:           ペースト\nCtrl+A:           すべて選択\nCtrl+L:           1行選択\n\
+    Enter:            1行追加（下）\nCtrl+Enter:       1行追加（上）\nShift+Enter:      通常の改行\n\
+    Ctrl+Delete:      1行削除\nCtrl+Z:           取り消し\nCtrl+Shift+Z:     取り消しを戻す\n\n\
+    Ctrl+F:           検索\nCtrl+Shift+F:     置換\n\nCtrl+T:           定型文\nCtrl+1-0:\
+    \         各定型文の入力\n\nCtrl+B:           付箋\n\nCtrl+Shift+P:     設定\n\nCtrl+Q, Alt+<:\
+    \    左の列に移動\nCtrl+W, Alt+>:    右の列に移動\n\nプロジェクトファイルはYAML形式のファイルの拡張子を変更したものです\n\
     一般のテキストエディタでも閲覧・編集が可能です\n\n設定ファイルはYAML形式です（setting.yaml）\n一般のテキストエディタでも閲覧・編集が可能です\n\
     実行ファイル（SoroEditor.exe または SoroEditor.py）と\n同じフォルダに置いてください\n\n不具合報告・要望などは、Joppincal@mailo.comへ\n\
     もしくはGithubのissueにて"
   title: SoroEditor初回起動メッセージ
 2:
   text: "同様の内容は、\nヘルプ(H)→ヘルプを表示(H)\tF1\tや\n初回起動メッセージを表示(F)\nもしくは\nhttps://github.com/joppincal/SoroEditor\n\
-    で確認できます\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n*.sep"
+    で確認できます\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\
+    \n\n\n\n\n\n\n\n\n\n\n\n*.sep"
   title: ''
 3:
   text: ''
