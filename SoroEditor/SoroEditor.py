@@ -43,12 +43,15 @@ class Main(Frame):
 
         self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(True))
 
-        sys.argv[0] = self.convert_drive_to_uppercase(sys.argv[0])
         global __file__
         __file__ = self.convert_drive_to_uppercase(__file__)
 
+        # 実行ファイルの場所を特定
+        self.place = self.convert_drive_to_uppercase(os.path.abspath(sys.argv[0]).replace('\\', '/'))
+        if os.path.isfile(self.place):
+            self.place = os.path.dirname(self.place)
         # 設定ファイルを読み込み
-        os.chdir(os.path.dirname(sys.argv[0]))
+        os.chdir(self.place)
         self.settingFile_Error_md = None
         initialization = False
         # デフォルト設定
@@ -2723,7 +2726,7 @@ class ImportWindow(Toplevel):
         Separator(self.f1).grid(row=3, column=0, columnspan=2, sticky=EW)
 
         Label(self.f1, text='ファイル: ').grid(row=4, column=0, sticky=E)
-        self.filepath = StringVar(value="P:\My Video\編集データ\台本\看取ってください、私のマスター！.csv")
+        self.filepath = StringVar()
         self.filepath_label = Label(self.f1, textvariable=self.filepath, wraplength=350)
         self.filepath_label.grid(row=4, column=1, sticky=EW)
         Button(self.f1, text='ファイル変更', command=self.change_filepath).grid(row=5, column=1, sticky=E)
@@ -2886,7 +2889,7 @@ class ExportWindow(Toplevel):
                     initialdir = os.path.dirname(app.filepath)
                     initialfile = os.path.splitext(os.path.basename(app.filepath))[0] + filetype
                 else:
-                    initialdir = sys.argv[0]
+                    initialdir = app.place
                     initialfile = 'export' + filetype
                 if filetype == '.csv':
                     filetype = (['CSVファイル', '*.csv'],
@@ -2932,7 +2935,7 @@ class ExportWindow(Toplevel):
         if app.filepath:
             self.filepath = StringVar(value=os.path.dirname(app.filepath) + '/' + os.path.splitext(os.path.basename(app.filepath))[0] + extension)
         else:
-            self.filepath = StringVar(value=os.path.join(os.path.dirname(sys.argv[0]), 'export'+extension))
+            self.filepath = StringVar(value=os.path.join(app.place, 'export'+extension).replace('\\', '/'))
 
         Label(self.lf3, text='保存先', padding=10).grid(column=0, row=2, sticky=W, padx=10, pady=5)
         filepath_label = Label(self.lf3)
