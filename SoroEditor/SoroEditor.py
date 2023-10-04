@@ -1,6 +1,8 @@
 '''
 SoroEditor - Joppincal
+
 This software is distributed under the MIT License. See LICENSE for details.
+
 See ThirdPartyNotices.txt for third party libraries.
 '''
 import datetime
@@ -30,8 +32,12 @@ from ttkbootstrap.themes.standard import *
 
 __version__ = metadata.version('soroeditor')
 __projversion__ = '0.3.8'
-with open(os.path.join(os.path.abspath(os.path.join(__file__, '../..')), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
-    __thirdpartynotices__ = f.read()
+
+# 作業ディレクトリを実行ファイルの位置に変更する
+cwd = os.path.dirname(os.path.abspath(sys.argv[0]).replace('\\', '/'))
+cwd = os.path.splitdrive(cwd)
+cwd:str = os.path.join(cwd[0].upper(), cwd[1])
+os.chdir(cwd)
 
 
 class Main(Frame):
@@ -46,12 +52,7 @@ class Main(Frame):
         global __file__
         __file__ = self.convert_drive_to_uppercase(__file__)
 
-        # 実行ファイルの場所を特定
-        self.place = self.convert_drive_to_uppercase(os.path.abspath(sys.argv[0]).replace('\\', '/'))
-        if os.path.isfile(self.place):
-            self.place = os.path.dirname(self.place)
         # 設定ファイルを読み込み
-        os.chdir(self.place)
         self.settingFile_Error_md = None
         initialization = False
         # デフォルト設定
@@ -193,7 +194,7 @@ class Main(Frame):
         try:
             self.initialdir = os.path.dirname(self.recently_files[0])
         except (IndexError, TypeError):
-            self.initialdir = ''
+            self.initialdir = cwd
         self.md_position = (int(self.winfo_screenwidth()/2-250), int(self.winfo_screenheight()/2-100))
 
         # メニューバーの作成
@@ -2889,7 +2890,7 @@ class ExportWindow(Toplevel):
                     initialdir = os.path.dirname(app.filepath)
                     initialfile = os.path.splitext(os.path.basename(app.filepath))[0] + filetype
                 else:
-                    initialdir = app.place
+                    initialdir = cwd
                     initialfile = 'export' + filetype
                 if filetype == '.csv':
                     filetype = (['CSVファイル', '*.csv'],
@@ -2935,7 +2936,7 @@ class ExportWindow(Toplevel):
         if app.filepath:
             self.filepath = StringVar(value=os.path.dirname(app.filepath) + '/' + os.path.splitext(os.path.basename(app.filepath))[0] + extension)
         else:
-            self.filepath = StringVar(value=os.path.join(app.place, 'export'+extension).replace('\\', '/'))
+            self.filepath = StringVar(value=os.path.join(cwd, 'export'+extension).replace('\\', '/'))
 
         Label(self.lf3, text='保存先', padding=10).grid(column=0, row=2, sticky=W, padx=10, pady=5)
         filepath_label = Label(self.lf3)
