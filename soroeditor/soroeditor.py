@@ -2470,8 +2470,12 @@ class ThirdPartyNoticesWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        with open(os.path.join(os.path.dirname(__file__), '..', 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
-            text = f.read()
+        if '__compiled__' in globals(): # Nuitkaでコンパイルした場合
+            with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+                text = f.read()
+        else:
+            with open(os.path.join(os.path.dirname(__file__), '..', 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+                text = f.read()
         familys = font.families(self)
         if 'Consolas' in familys: family = 'Consolas'
         elif 'SF Mono' in familys: family = 'SF Mono'
