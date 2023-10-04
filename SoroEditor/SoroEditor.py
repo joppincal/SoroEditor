@@ -1250,7 +1250,7 @@ class Main(Frame):
                 value = datetime.datetime(1900, 1, 1)
                 self.counting_down = False
                 self.count_down_stop_value = '0:00:00.00'
-                print('\a')
+                print('\a', end='')
 
             value = datetime.datetime.strftime(value, f'{value.hour}:%M:%S.%f')
             self.count_down_time.set(value[:-4])
@@ -2470,7 +2470,8 @@ class ThirdPartyNoticesWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        text = __thirdpartynotices__
+        with open(os.path.join(os.path.dirname(__file__), '..', 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+            text = f.read()
         familys = font.families(self)
         if 'Consolas' in familys: family = 'Consolas'
         elif 'SF Mono' in familys: family = 'SF Mono'
