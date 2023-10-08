@@ -90,7 +90,8 @@ class Main(Frame):
         # 設定ファイルを開く
         try:
             with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
+                string = f.read()
+                data = yaml.safe_load(string)
                 if set(data.keys()) & set(self.settings.keys()) != set(self.settings.keys()):
                     raise KeyError('Settings file is incomplete')
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
@@ -104,7 +105,7 @@ class Main(Frame):
                                         '不備のある設定ファイルを'\
                                         f'「{error_filename}」として保存します'
             with open('./'+f'{error_filename}', mode='wt', encoding='utf-8') as f:
-                yaml.safe_dump(data, f, allow_unicode=True)
+                print(string, file=f)
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         ## 存在しない場合新規作成
         except FileNotFoundError as e:
