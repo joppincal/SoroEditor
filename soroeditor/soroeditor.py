@@ -3651,14 +3651,31 @@ class Icons:
         return os.path.join(os.path.dirname(__file__), path)
 
 def main():
-    global app
-    log_setting()
-    log.info('===Start Application===')
-    root = Window(title='SoroEditor', minsize=(800, 500))
-    root.iconphoto(False, Icons().icon)
-    app = Main(master=root)
-    app.mainloop()
-    log.info('===Close Application===')
+    try:
+        global app
+        log_setting()
+        log.info('===Start Application===')
+        root = Window(title='SoroEditor', minsize=(800, 500))
+        root.iconphoto(False, Icons().icon)
+        app = Main(master=root)
+        app.mainloop()
+
+    except: # あらゆる想定外のエラーをログに出力
+        if not '__compiled__' in globals(): # Nuitkaで作成した実行ファイルでない場合、標準出力
+            import traceback
+            print(traceback.format_exc(), end='')
+
+        # エラー内容をログファイルに出力
+        log.exception('Unexpected Error')
+        # エラー発生ダイアログを表示
+        messagedialog = MessageDialog('Unexpected error.\nSee log file for details.', 'SoroEditor - Unexpected Error', ['OK', 'Open log file'], alert=True)
+        messagedialog.show()
+
+        if messagedialog.result == 'Open log file': # ログファイルを開く
+            os.startfile(os.path.abspath('./log/soroeditor.log'))
+
+    finally:
+        log.info('===Close Application===')
 
 def log_setting():
     global log
