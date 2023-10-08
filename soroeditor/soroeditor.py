@@ -3666,11 +3666,12 @@ def log_setting():
         os.mkdir('./log')
     log = logging.getLogger(__name__)
     log.setLevel(logging.DEBUG)
-    formater = logging.Formatter('{asctime} {name:<8s} {levelname:<8s} {message}', style='{')
+    formater = logging.Formatter('{asctime} {name:<21s} {levelname:<8s} {message}', style='{')
     handler = logging.handlers.RotatingFileHandler(
         filename='./log/soroeditor.log',
         encoding='utf-8',
-        maxBytes=102400)
+        maxBytes=102400,
+        backupCount=10)
     handler.setFormatter(formater)
     log.addHandler(handler)
 
