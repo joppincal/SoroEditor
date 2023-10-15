@@ -15,8 +15,7 @@ import webbrowser
 from collections import deque, namedtuple
 from random import choice
 import csv
-import logging
-import logging.handlers
+from logging import DEBUG, Formatter, getLogger, handlers
 import yaml
 
 from PIL import Image, ImageTk
@@ -96,7 +95,7 @@ class Main(Frame):
                     raise KeyError('Settings file is incomplete')
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
         except (KeyError, yaml.YAMLError) as e:
-            log.error(e)
+            logger.error(e)
             self.update_setting_file()
             t = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
             error_filename = f'settings(error)_{t}.yaml'
@@ -109,14 +108,14 @@ class Main(Frame):
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         ## 存在しない場合新規作成
         except FileNotFoundError as e:
-            log.error(e)
+            logger.error(e)
             self.update_setting_file()
             settingFile_Error_message = '設定ファイルが存在しなかったため作成しました'
             initialization = True
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         else:
             self.settings = data
-            log.info('Succeed loading settings')
+            logger.info('Succeed loading settings')
 
         # 設定ファイルから各設定を読み込み
         ## ウィンドウサイズ
@@ -126,7 +125,7 @@ class Main(Frame):
             try:
                 self.master.geometry(self.settings['geometry'])
             except TclError as e:
-                log.error(f'Failed to set window size: {e}')
+                logger.error(f'Failed to set window size: {e}')
         ## テーマを設定
         self.windowstyle = Style()
         self.windowstyle.theme_use(self.settings['themename'])
@@ -802,7 +801,7 @@ class Main(Frame):
                 filetypes=[('SoroEditorプロジェクトファイル', '.sep'), ('YAMLファイル', '.yaml'), ('その他', '.*'), ('ThreeCrowsプロジェクトファイル', '.tcs'), ('CastellaEditorプロジェクトファイル', '.cep')],
                 defaultextension='sep')
 
-        log.info(f'Opening file: {file_path_to_open}')
+        logger.info(f'Opening file: {file_path_to_open}')
 
         if file_path_to_open:
             try:
@@ -871,7 +870,7 @@ class Main(Frame):
                 self.make_menu_bookmarks()
 
             except FileNotFoundError as e:
-                log.error(e)
+                logger.error(e)
                 md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが見つかりません')
                 md.show(self.md_position)
                 # 最近使用したファイルに見つからなかったファイルが入っている場合、削除しsettins.yamlに反映する
@@ -899,7 +898,7 @@ class Main(Frame):
                     pass
 
             except (KeyError, UnicodeDecodeError, yaml.scanner.ScannerError) as e:
-                log.error(f'Cannot open file: {e}')
+                logger.error(f'Cannot open file: {e}')
                 # ファイルが読み込めなかった場合
                 md = MessageDialog(
                     title='TreeCrows - エラー',
@@ -910,7 +909,7 @@ class Main(Frame):
 
             else:
                 self.filepath = file_path_to_open
-                log.info(f'Succeed opening file: {self.filepath}')
+                logger.info(f'Succeed opening file: {self.filepath}')
 
         return 'break'
 
@@ -953,9 +952,9 @@ class Main(Frame):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while writing to the file {file_path}: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while writing to the file {file_path}: {error_message}")
         else:
-            log.info(f'Save file: {file_path}')
+            logger.info(f'Save file: {file_path}')
 
         self.update_recently_files()
 
@@ -969,9 +968,9 @@ class Main(Frame):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
         else:
-            log.info('Update setting file')
+            logger.info('Update setting file')
 
     def update_recently_files(self):
         '''
@@ -1775,7 +1774,7 @@ class Main(Frame):
 
         if not self.do_backup:
             return
-        log.info('---Backup---')
+        logger.info('---Backup---')
 
         # バックアップファイル名・パスを生成する
         backup_filename = ''
@@ -1831,11 +1830,11 @@ class Main(Frame):
             with open(backup_filepath, 'wt', encoding='utf-8') as f:
                 f.writelines(backup_data)
         except OSError as e:
-            log.error(f'---Failed Backup---\n: {e}')
+            logger.error(f'---Failed Backup---\n: {e}')
             return
 
         # バックアップ完了メッセージをログに出力する
-        log.info(f'{backup_filepath}\n---Succeed Backup---')
+        logger.info(f'{backup_filepath}\n---Succeed Backup---')
 
         # backup_frequency秒後に再度バックアップを実行する
         self.master.after(self.backup_frequency, self.backup)
@@ -1848,11 +1847,11 @@ class Main(Frame):
             return
         if not self.filepath:
             return
-        log.info(f'---Autosave---')
+        logger.info(f'---Autosave---')
         if self.file_over_write_save():
-            log.info(f'---Succeed Autosave---')
+            logger.info(f'---Succeed Autosave---')
         else:
-            log.error(f'---Failed Autosave---')
+            logger.error(f'---Failed Autosave---')
         self.master.after(self.autosave_frequency, self.autosave)
 
     def popup(self, e=None):
@@ -1907,7 +1906,7 @@ class Main(Frame):
 
     def close_sub_window(self, sub_window:Toplevel):
         def inner(*_):
-            log.info(f'---Close {sub_window.__class__.__name__}---')
+            logger.info(f'---Close {sub_window.__class__.__name__}---')
             sub_window.destroy()
         return inner
 
@@ -1928,7 +1927,7 @@ class SettingWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open SettingWindow---')
+        logger.info('---Open SettingWindow---')
         # 設定ファイルの読み込み
         with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
             self.settings = yaml.safe_load(f)
@@ -2221,14 +2220,14 @@ backup-{ファイル名}.$epに保存されます
         try:
             number_of_columns = int(self.setting_number_of_columns.get())
         except ValueError as e:
-            log.exception(f'invalid value in number of columns: {e}')
+            logger.exception(f'invalid value in number of columns: {e}')
             number_of_columns = self.settings['columns']['number']
         percentage_of_columns = []
         for i in range(len(self.setting_column_percentage)):
             try:
                 percentage_of_columns.append(int(self.setting_column_percentage[i].get()))
             except ValueError as e:
-                log.exception(f'invalid value in percentage of columns: {e}')
+                logger.exception(f'invalid value in percentage of columns: {e}')
                 percentage_of_columns.append(self.settings['columns']['percentage'][i])
         for _ in range(10-len(percentage_of_columns)):
             percentage_of_columns.append(0)
@@ -2236,12 +2235,12 @@ backup-{ファイル名}.$epに保存されます
         try:
             font_size = int(self.setting_font_size.get())
         except ValueError as e:
-            log.exception(f'invalid value in font_size: {e}')
+            logger.exception(f'invalid value in font_size: {e}')
             font_size = self.settings['font']['size']
         try:
             between_lines = int(self.setting_between_lines.get())
         except ValueError as e:
-            log.exception(f'invalid value in between lines: {e}')
+            logger.exception(f'invalid value in between lines: {e}')
             between_lines = self.setitngs['between_lines']
         wrap = self.setting_wrap.get()
         themename = self.setting_theme.get()
@@ -2253,13 +2252,13 @@ backup-{ファイル名}.$epに保存されます
         try:
             autosave_frequency = int(float(self.setting_autosave_frequency.get())*60000)
         except ValueError as e:
-            log.exception(f'invalid value in autosave frequency: {e}')
+            logger.exception(f'invalid value in autosave frequency: {e}')
             autosave_frequency = self.settings['autosave_frequency']
         backup = self.backup.get()
         try:
             backup_frequency = int(float(self.setting_backup_frequency.get())*60000)
         except ValueError as e:
-            log.exception(f'invalid value in backup frequency: {e}')
+            logger.exception(f'invalid value in backup frequency: {e}')
             backup_frequency = self.settings['backup_frequency']
         if themename == '------': themename = self.themename
         statusbar_method = {i: [] for i in range(7)}
@@ -2312,7 +2311,7 @@ backup-{ファイル名}.$epに保存されます
                     spacing3=between_lines,
                     )
         except TclError as e:
-            log.error(f'Failed to write to the settigs dict: {e}')
+            logger.error(f'Failed to write to the settigs dict: {e}')
 
         # 設定ファイルに更新された辞書を保存する
         try:
@@ -2321,9 +2320,9 @@ backup-{ファイル名}.$epに保存されます
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
         else:
-            log.info('Update setting file')
+            logger.info('Update setting file')
             MessageDialog('一部の設定（*アスタリスク付きの項目）の反映にはアプリの再起動が必要です\n'+
                         '設定をすぐに反映したい場合、いったんアプリを終了して再起動してください',
                         'SoroEditor - 設定',
@@ -2383,7 +2382,7 @@ class ProjectFileSettingWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open ProjectFileSettingWindow---')
+        logger.info('---Open ProjectFileSettingWindow---')
         if app.get_current_data() != app.data:
             self.withdraw()
             messagedialog = MessageDialog('プロジェクトファイル設定を変更する前にプロジェクトファイルを保存します',
@@ -2489,7 +2488,7 @@ class ThirdPartyNoticesWindow(Toplevel):
         def open_url(url):
             def inner(_):
                 webbrowser.open_new(url)
-                log.info(f'Open {url}')
+                logger.info(f'Open {url}')
             return inner
         for m in pattern.finditer(text):
             index = widget.search(m.group(), 0.0)
@@ -2699,7 +2698,7 @@ class ImportWindow(Toplevel):
     def __init__(self, title="SoroEditor - インポート", iconphoto='', size=(500, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
-        log.info('---Open ImportWindow---')
+        logger.info('---Open ImportWindow---')
 
         self.close = app.close_sub_window(self)
 
@@ -2801,7 +2800,7 @@ class ExportWindow(Toplevel):
     def __init__(self, title="SoroEditor - エクスポート", iconphoto='', size=(1000, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
-        log.info('---Open ExportWindow---')
+        logger.info('---Open ExportWindow---')
 
         self.close = app.close_sub_window(self)
 
@@ -3059,13 +3058,13 @@ class ExportWindow(Toplevel):
             with open(self.filepath.get(), mode='wt', encoding=encoding, errors='replace') as f:
                 f.write(data)
         except PermissionError as e:
-            log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
+            logger.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
             return False
         except Exception as e:
-            log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
+            logger.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
             return False
         else:
-            log.info(f'Succeed export {self.file_format.get()}: {self.filepath.get()}')
+            logger.info(f'Succeed export {self.file_format.get()}: {self.filepath.get()}')
             # 書き込みを行い成功した場合Trueを返す
             return True
 
@@ -3075,7 +3074,7 @@ class SearchWindow(Toplevel):
     def __init__(self, title='', iconphoto='', size=None, position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
-        log.info('---Open SearchWindow---')
+        logger.info('---Open SearchWindow---')
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
@@ -3095,9 +3094,9 @@ class SearchWindow(Toplevel):
         searchtext = iconphoto
 
         if self.mode == 0:
-            log.info('Search Mode')
+            logger.info('Search Mode')
         if self.mode == 1:
-            log.info('Replace Mode')
+            logger.info('Replace Mode')
 
         self.config(padx=10, pady=10)
 
@@ -3314,7 +3313,7 @@ class TemplateWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open TemplateWindow---')
+        logger.info('---Open TemplateWindow---')
 
         self.is_topmost = BooleanVar()
 
@@ -3381,7 +3380,7 @@ class TemplateWindow(Toplevel):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while loading setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while loading setting file: {error_message}")
             MessageDialog('設定ファイルの読み込みに失敗したため定型文を利用できません\nsettings.yamlが存在するか確認してください',
                             'SoroEditor - 定型文').show(app.md_position)
             self.destroy()
@@ -3402,9 +3401,9 @@ class TemplateWindow(Toplevel):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
         else:
-            log.info('Succeed updating setting file by TemplateWindow')
+            logger.info('Succeed updating setting file by TemplateWindow')
 
     def key_released(self, e=None):
         # Entry内のテキストに変更があるか確認する
@@ -3437,7 +3436,7 @@ class BookmarkWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open BookmarkWindow---')
+        logger.info('---Open BookmarkWindow---')
 
         self.is_topmost = BooleanVar()
 
@@ -3655,7 +3654,7 @@ def main():
     try:
         global app
         log_setting()
-        log.info('===Start Application===')
+        logger.info('===Start Application===')
         root = Window(title='SoroEditor', minsize=(800, 500))
         root.iconphoto(False, Icons().icon)
         app = Main(master=root)
@@ -3667,7 +3666,7 @@ def main():
             print(traceback.format_exc(), end='')
 
         # エラー内容をログファイルに出力
-        log.exception('Unexpected Error')
+        logger.exception('Unexpected Error')
         # エラー発生ダイアログを表示
         messagedialog = MessageDialog('Unexpected error.\nSee log file for details.', 'SoroEditor - Unexpected Error', ['OK', 'Open log file'], alert=True)
         messagedialog.show()
@@ -3676,22 +3675,22 @@ def main():
             os.startfile(os.path.abspath('./log/soroeditor.log'))
 
     finally:
-        log.info('===Close Application===')
+        logger.info('===Close Application===')
 
 def log_setting():
-    global log
+    global logger
     if not os.path.exists('./log'):
         os.mkdir('./log')
-    log = logging.getLogger(__name__)
-    log.setLevel(logging.DEBUG)
-    formater = logging.Formatter('{asctime} {name:<21s} {levelname:<8s} {message}', style='{')
-    handler = logging.handlers.RotatingFileHandler(
+    logger = getLogger(__name__)
+    logger.setLevel(DEBUG)
+    formater = Formatter('{asctime} {name:<21s} {levelname:<8s} {message}', style='{')
+    handler = handlers.RotatingFileHandler(
         filename='./log/soroeditor.log',
         encoding='utf-8',
         maxBytes=102400,
         backupCount=10)
     handler.setFormatter(formater)
-    log.addHandler(handler)
+    logger.addHandler(handler)
 
 if __name__ == '__main__':
     main()
