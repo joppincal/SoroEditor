@@ -829,15 +829,13 @@ class Main(Frame):
             while True:
                 bbox = event.widget.bbox(INSERT)
                 if bbox[1] > event.widget.winfo_height()*9/10:
-                    if self.stop_scroll_down():
-                        break
                     for text in self.textboxes:
-                        text.yview_scroll(2, UNITS)
+                        text.yview_scroll(1, UNITS)
                 elif bbox[1] < event.widget.winfo_height()*1/10:
                     if event.widget.index('@0,0') == '1.0':
                         break
                     for text in self.textboxes:
-                        text.yview_scroll(-2, UNITS)
+                        text.yview_scroll(-1, UNITS)
                 else:
                     break
 
