@@ -8,6 +8,7 @@ See ThirdPartyNotices.txt for third party libraries.
 import datetime
 import difflib
 from importlib import metadata
+import math
 import os
 import re
 import sys
@@ -680,9 +681,6 @@ class Main(Frame):
                 spacing3=self.between_lines,
                 )
             self.line_number_box.tag_config('right', justify=RIGHT)
-            for i in range(9999):
-                i = i + 1
-                self.line_number_box.insert(END, f'{i}\n', 'right')
             self.line_number_box.config(state=DISABLED, takefocus=NO)
 
             self.f1_1.pack(fill=Y, side=LEFT, pady=10)
@@ -737,15 +735,22 @@ class Main(Frame):
 
         self.align_number_of_rows()
 
+        self.middledragplace = []
+        self.insert_before_keypress = None
+        self.end_of_text_before_keypress = None
+
         for w in self.maintexts:
+            w.bind('<KeyPress>', self.scroll_when_key_press)
             w.bind('<Button-3>', self.popup)
             w.bind('<Control-o>', self.file_open)
             for event in ['<Alt-Up>', '<Alt-Control-Up>', '<Alt-Down>', '<Alt-Control-Down>']:
                 w.bind(event, self.handle_KeyPress_event_of_swap_lines)
-            w.bind('<Return>', lambda e: self.newline(e, 1))
+            w.bind('<Shift-Return>', lambda e: self.newline(e, 1), '+')
             w.bind('<Control-Return>', lambda e: self.newline(e, 0), '+')
-            w.bind('<Shift-Return>', lambda e: print(end=''), '+')
             w.bind('<Control-Delete>', self.deleteline)
+            w.bind('<MouseWheel>', self.mousewheelcommand)
+            w.bind('<Button2-Motion>', self.middle_drag_command)
+            w.bind('<ButtonRelease-2>', self.middle_release_command)
 
         self.set_text_widget_editable(mode=2)
 
@@ -755,19 +760,104 @@ class Main(Frame):
         '''
         self.set_text_widget_editable(mode=1)
         # 最大行数を取得する
-        max_line = max([self.line_count(w, True) for w in self.textboxes])
+        max_line = max([self.line_count(w) for w in self.maintexts])
         # 各列の行数を揃える
-        for w in self.textboxes:
+        for w in self.maintexts:
             # 行数の差分を計算する
             line_count_diff = max_line - self.line_count(w, True)
-            w.insert(END, '\n'*line_count_diff)
-        # カーソルを最初の列に移動する
-        if e:
-            self.maintexts[0].see(INSERT)
-        else:
-            for w in self.textboxes:
-                w.mark_set(INSERT, 1.0)
+            w.insert(END, '\n'*(line_count_diff+1000))
+        # 行番号を修正する
+        try:
+            line_number_max = self.line_count(self.line_number_box)
+            line_count_diff = max_line - line_number_max
+            for i in range(line_count_diff+1000):
+                self.line_number_box.configure(state=NORMAL)
+                self.line_number_box.insert(END, f'{line_number_max+i}\n')
+                self.line_number_box.configure(state=DISABLED)
+        except AttributeError as e:
+            pass
+
         self.set_text_widget_editable()
+
+        self.after(3000, self.align_number_of_rows)
+
+    def stop_scroll_down(self):
+        return not any([self.line_count(w)+5 >= int(float(w.index(f'@0,{w.winfo_height()}'))) for w in self.maintexts])
+
+    def mousewheelcommand(self, event):
+        if event.delta > 0:
+            units = -1
+        if event.delta < 0:
+            if self.stop_scroll_down():
+                return 'break'
+            units = 1
+        for text in self.textboxes:
+            text.yview('scroll', units, 'units')
+        return 'break'
+
+    def middle_drag_command(self, event):
+        if self.middledragplace:
+            units = (self.middledragplace[1]-event.y)/10
+            if units > 0:
+                units = math.ceil(units)
+                if self.stop_scroll_down():
+                    return 'break'
+            if units < 0:
+                units = math.floor(units)
+            for text in self.textboxes:
+                text.yview('scroll', int(units), 'units')
+        self.middledragplace = [event.x, event.y]
+        return 'break'
+
+    def middle_release_command(self, event):
+        self.middledragplace = []
+
+    def scroll_when_key_press(self, event):
+        if type(event.widget) == Text:
+            bbox = event.widget.bbox(INSERT)
+            if not bbox:
+                while True:
+                    if float(event.widget.index(INSERT)) < float(event.widget.index('@0,0')):
+                        for text in self.textboxes:
+                            text.yview_scroll(-1, PAGES)
+                    elif float(event.widget.index(INSERT)) > float(event.widget.index(f'@0,{event.widget.winfo_height()}')):
+                        for text in self.textboxes:
+                            text.yview_scroll(1, PAGES)
+                    if float(event.widget.index('@0,0')) < float(event.widget.index(INSERT)) < float(event.widget.index(f'@0,{event.widget.winfo_height()}')):
+                        break
+                event.widget.see(INSERT)
+            while True:
+                bbox = event.widget.bbox(INSERT)
+                if bbox[1] > event.widget.winfo_height()*9/10:
+                    if self.stop_scroll_down():
+                        break
+                    for text in self.textboxes:
+                        text.yview_scroll(2, UNITS)
+                elif bbox[1] < event.widget.winfo_height()*1/10:
+                    if event.widget.index('@0,0') == '1.0':
+                        break
+                    for text in self.textboxes:
+                        text.yview_scroll(-2, UNITS)
+                else:
+                    break
+
+    def yscrollcommand(self, *args):
+        proportion = self.seek_vbar_proportion()
+        args = [float(arg)*proportion for arg in args]
+        self.vbar.set(*args)
+
+    def vbarcommand(self, *args):
+        args = list(args)
+        if args[0] == 'moveto':
+            proportion = self.seek_vbar_proportion()
+            args[1] = f'{float(args[1])/proportion}'
+        for text in self.textboxes:
+            text.yview(*args)
+
+    def seek_vbar_proportion(self):
+        max_line = max([self.line_count(w) for w in self.maintexts]) + 1
+        max_line2 = max([self.line_count(w, True) for w in self.maintexts])
+        return max_line2 / max_line
 
     # 以下、ファイルの開始、保存、終了に関するメソッド
     def file_create(self, e=None):
@@ -1613,7 +1703,6 @@ class Main(Frame):
 
         for w in self.maintexts:
             w.insert(insert, '\n')
-            w.see(insert)
 
         widget.mark_set(INSERT, insert)
 
@@ -1705,26 +1794,6 @@ class Main(Frame):
                 w.tag_delete('insert_line')
                 w.tag_add('insert_line', insert+' linestart', insert+' lineend')
                 w.tag_config('insert_line', underline=False, font=highlight_font)
-
-    def yscrollcommand(self, *args):
-        for text in self.textboxes:
-            text.yview('moveto', args[0])
-        proportion = self.seek_vbar_proportion()
-        args = [float(arg)*proportion for arg in args]
-        self.vbar.set(*args)
-
-    def vbarcommand(self, *args):
-        args = list(args)
-        if args[0] == 'moveto':
-            proportion = self.seek_vbar_proportion()
-            args[1] = f'{float(args[1])/proportion}'
-        for text in self.textboxes:
-            text.yview(*args)
-
-    def seek_vbar_proportion(self):
-        max_line = max([self.line_count(w) for w in self.maintexts]) + 50
-        max_line2 = max([self.line_count(w, True) for w in self.maintexts])
-        return max_line2 / max_line
 
     def set_text_widget_editable(self, e=None, mode=0, widget=None):
         '''
