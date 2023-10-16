@@ -741,6 +741,7 @@ class Main(Frame):
 
         for w in self.maintexts:
             w.bind('<KeyPress>', self.scroll_when_key_press)
+            w.bind('<KeyRelease>', self.scroll_when_key_press)
             w.bind('<Button-3>', self.popup)
             w.bind('<Control-o>', self.file_open)
             for event in ['<Alt-Up>', '<Alt-Control-Up>', '<Alt-Down>', '<Alt-Control-Down>']:
@@ -770,7 +771,7 @@ class Main(Frame):
         try:
             line_number_max = self.line_count(self.line_number_box)
             line_count_diff = max_line - line_number_max
-            for i in range(line_count_diff+1000):
+            for i in range(1, line_count_diff+1001):
                 self.line_number_box.configure(state=NORMAL)
                 self.line_number_box.insert(END, f'{line_number_max+i}\n')
                 self.line_number_box.configure(state=DISABLED)
@@ -814,6 +815,9 @@ class Main(Frame):
 
     def scroll_when_key_press(self, event):
         if type(event.widget) == Text:
+            if float(event.widget.index(INSERT)) > self.line_count(event.widget) + 5:
+                event.widget.mark_set(INSERT, f'{self.line_count(event.widget) + 5}.0')
+                event.widget.see(INSERT)
             bbox = event.widget.bbox(INSERT)
             if not bbox:
                 while True:
