@@ -2541,33 +2541,55 @@ class ThirdPartyNoticesWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        if '__compiled__' in globals(): # Nuitkaでコンパイルした場合
-            with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
-                text = f.read()
-        else:
-            with open(os.path.join(os.path.dirname(__file__), '..', 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
-                text = f.read()
+        try:
+            if '__compiled__' in globals(): # Nuitkaでコンパイルした場合
+                with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+                    text = f.read()
+            else:
+                with open(os.path.join(os.path.dirname(__file__), '..', 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+                    text = f.read()
+        except FileNotFoundError:
+            logger.info('Could not find ThirdPartyNotices.txt')
+            webbrowser.open(f'https://github.com/joppincal/SoroEditor/blob/v{__version__}/ThirdPartyNotices.txt')
+            self.destroy()
+            return
+
+        # 等幅フォントの選択
         familys = font.families(self)
-        if 'Consolas' in familys: family = 'Consolas'
-        elif 'SF Mono' in familys: family = 'SF Mono'
-        elif 'DejaVu Sans Mono' in familys: family = 'DejaVu Sans Mono'
-        else: family = 'Courier'
+        family = None
+        for f in ['Consolas', 'SF Mono', 'DejaVu Sans Mono', 'Courier New', 'Courier']:
+            if f in familys:
+                family = f
+                break
+        if not family:
+            family = font.nametofont('TkFixedFont')['family']
+
         widget = ScrolledText(self, 10)
         widget.insert(END, text)
+
+        # ThirdPartyNotice.txtで使用している各ライセンスの区切り
+        # .groups()[0]はライセンス名、.groups()[1]はURL
         pattern = re.compile('\n---------------------------------------------------------\n\n(.+)\n(.+)')
+
         widget.tag_config('name', font=font.Font(family=family, size=18, weight='bold'), spacing2=10)
+
         def open_url(url):
             def inner(_):
                 webbrowser.open_new(url)
                 logger.info(f'Open {url}')
             return inner
+
         for m in pattern.finditer(text):
             index = widget.search(m.group(), 0.0)
+
             widget.tag_add('name', index+'+3lines', index+'+3lines lineend')
             widget.tag_config(m.groups()[1], font=font.Font(family=family, size=14, underline=True), spacing2=10)
+
             widget.tag_add(m.groups()[1], index+'+4lines', index+'+4lines lineend')
+
             command = open_url(m.groups()[1])
             widget.tag_bind(m.groups()[1], '<Button-1>', command)
+
         widget.winfo_children()[0].config(font=font.Font(family=family, size=12), spacing2=10, state=DISABLED)
         widget.pack(fill=BOTH, expand=True)
 
