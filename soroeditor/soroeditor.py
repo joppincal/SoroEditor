@@ -17,6 +17,7 @@ from collections import deque, namedtuple
 from random import choice
 import csv
 from logging import DEBUG, Formatter, getLogger, handlers
+import urllib.request, urllib.error
 import yaml
 
 from PIL import Image, ImageTk
@@ -2549,10 +2550,16 @@ class ThirdPartyNoticesWindow(Toplevel):
                 with open(os.path.join(os.path.dirname(__file__), '..', 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
                     text = f.read()
         except FileNotFoundError:
+            url = f'https://raw.githubusercontent.com/joppincal/SoroEditor/v{__version__}/ThirdPartyNotices.txt'
             logger.info('Could not find ThirdPartyNotices.txt')
-            webbrowser.open(f'https://github.com/joppincal/SoroEditor/blob/v{__version__}/ThirdPartyNotices.txt')
-            self.destroy()
-            return
+            logger.info(f'Attempt to retrieve data from {url}')
+            try:
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req) as res:
+                    text = res.read().decode('utf-8')
+            except (urllib.error.URLError, urllib.error.HTTPError, urllib.error.ContentTooShortError, TimeoutError, ConnectionError):
+                logger.exception(f'Failed to retrieve data from {url}')
+                text = f'データの取得に失敗しました\nサードパーティライセンスの情報は\nhttps://github.com/joppincal/SoroEditor/blob/v{__version__}/ThirdPartyNotices.txt を参照してください'
 
         # 等幅フォントの選択
         familys = font.families(self)
