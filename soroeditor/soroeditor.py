@@ -1,10 +1,14 @@
 '''
 SoroEditor - Joppincal
+
 This software is distributed under the MIT License. See LICENSE for details.
+
 See ThirdPartyNotices.txt for third party libraries.
 '''
 import datetime
 import difflib
+from importlib import metadata
+import math
 import os
 import re
 import sys
@@ -12,8 +16,8 @@ import webbrowser
 from collections import deque, namedtuple
 from random import choice
 import csv
-import logging
-import logging.handlers
+from logging import DEBUG, Formatter, getLogger, handlers
+import urllib.request, urllib.error
 import yaml
 
 from PIL import Image, ImageTk
@@ -27,10 +31,14 @@ from ttkbootstrap.scrolled import ScrolledText
 from ttkbootstrap.themes.standard import *
 
 
-__version__ = '0.5.1'
+__version__ = metadata.version('soroeditor')
 __projversion__ = '0.3.8'
-with open(os.path.join(os.path.abspath(os.path.join(__file__, '../..')), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
-    __thirdpartynotices__ = f.read()
+
+# 作業ディレクトリを実行ファイルの位置に変更する
+cwd = os.path.dirname(os.path.abspath(sys.argv[0]).replace('\\', '/'))
+cwd = os.path.splitdrive(cwd)
+cwd:str = os.path.join(cwd[0].upper(), cwd[1])
+os.chdir(cwd)
 
 
 class Main(Frame):
@@ -42,12 +50,10 @@ class Main(Frame):
 
         self.master.protocol('WM_DELETE_WINDOW', lambda:self.file_close(True))
 
-        sys.argv[0] = self.convert_drive_to_uppercase(sys.argv[0])
         global __file__
         __file__ = self.convert_drive_to_uppercase(__file__)
 
         # 設定ファイルを読み込み
-        os.chdir(os.path.dirname(sys.argv[0]))
         self.settingFile_Error_md = None
         initialization = False
         # デフォルト設定
@@ -85,12 +91,13 @@ class Main(Frame):
         # 設定ファイルを開く
         try:
             with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
+                string = f.read()
+                data = yaml.safe_load(string)
                 if set(data.keys()) & set(self.settings.keys()) != set(self.settings.keys()):
                     raise KeyError('Settings file is incomplete')
         ## 内容に不備がある場合新規作成し、古い設定ファイルを別名で保存
         except (KeyError, yaml.YAMLError) as e:
-            log.error(e)
+            logger.error(e)
             self.update_setting_file()
             t = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
             error_filename = f'settings(error)_{t}.yaml'
@@ -99,18 +106,18 @@ class Main(Frame):
                                         '不備のある設定ファイルを'\
                                         f'「{error_filename}」として保存します'
             with open('./'+f'{error_filename}', mode='wt', encoding='utf-8') as f:
-                yaml.safe_dump(data, f, allow_unicode=True)
+                print(string, file=f)
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         ## 存在しない場合新規作成
         except FileNotFoundError as e:
-            log.error(e)
+            logger.error(e)
             self.update_setting_file()
             settingFile_Error_message = '設定ファイルが存在しなかったため作成しました'
             initialization = True
             self.settingFile_Error_md = MessageDialog(message=settingFile_Error_message, buttons=['OK'])
         else:
             self.settings = data
-            log.info('Succeed loading settings')
+            logger.info('Succeed loading settings')
 
         # 設定ファイルから各設定を読み込み
         ## ウィンドウサイズ
@@ -120,7 +127,7 @@ class Main(Frame):
             try:
                 self.master.geometry(self.settings['geometry'])
             except TclError as e:
-                log.error(f'Failed to set window size: {e}')
+                logger.error(f'Failed to set window size: {e}')
         ## テーマを設定
         self.windowstyle = Style()
         self.windowstyle.theme_use(self.settings['themename'])
@@ -189,7 +196,7 @@ class Main(Frame):
         try:
             self.initialdir = os.path.dirname(self.recently_files[0])
         except (IndexError, TypeError):
-            self.initialdir = ''
+            self.initialdir = cwd
         self.md_position = (int(self.winfo_screenwidth()/2-250), int(self.winfo_screenheight()/2-100))
 
         # メニューバーの作成
@@ -675,9 +682,6 @@ class Main(Frame):
                 spacing3=self.between_lines,
                 )
             self.line_number_box.tag_config('right', justify=RIGHT)
-            for i in range(9999):
-                i = i + 1
-                self.line_number_box.insert(END, f'{i}\n', 'right')
             self.line_number_box.config(state=DISABLED, takefocus=NO)
 
             self.f1_1.pack(fill=Y, side=LEFT, pady=10)
@@ -732,15 +736,23 @@ class Main(Frame):
 
         self.align_number_of_rows()
 
+        self.middledragplace = []
+        self.insert_before_keypress = None
+        self.end_of_text_before_keypress = None
+
         for w in self.maintexts:
+            w.bind('<KeyPress>', self.scroll_when_key_press)
+            w.bind('<KeyRelease>', self.scroll_when_key_press)
             w.bind('<Button-3>', self.popup)
             w.bind('<Control-o>', self.file_open)
             for event in ['<Alt-Up>', '<Alt-Control-Up>', '<Alt-Down>', '<Alt-Control-Down>']:
                 w.bind(event, self.handle_KeyPress_event_of_swap_lines)
-            w.bind('<Return>', lambda e: self.newline(e, 1))
+            w.bind('<Shift-Return>', lambda e: self.newline(e, 1), '+')
             w.bind('<Control-Return>', lambda e: self.newline(e, 0), '+')
-            w.bind('<Shift-Return>', lambda e: print(end=''), '+')
             w.bind('<Control-Delete>', self.deleteline)
+            w.bind('<MouseWheel>', self.mousewheelcommand)
+            w.bind('<Button2-Motion>', self.middle_drag_command)
+            w.bind('<ButtonRelease-2>', self.middle_release_command)
 
         self.set_text_widget_editable(mode=2)
 
@@ -750,19 +762,105 @@ class Main(Frame):
         '''
         self.set_text_widget_editable(mode=1)
         # 最大行数を取得する
-        max_line = max([self.line_count(w, True) for w in self.textboxes])
+        max_line = max([self.line_count(w) for w in self.maintexts])
         # 各列の行数を揃える
-        for w in self.textboxes:
+        for w in self.maintexts:
             # 行数の差分を計算する
             line_count_diff = max_line - self.line_count(w, True)
-            w.insert(END, '\n'*line_count_diff)
-        # カーソルを最初の列に移動する
-        if e:
-            self.maintexts[0].see(INSERT)
-        else:
-            for w in self.textboxes:
-                w.mark_set(INSERT, 1.0)
+            w.insert(END, '\n'*(line_count_diff+1000))
+        # 行番号を修正する
+        try:
+            line_number_max = self.line_count(self.line_number_box)
+            line_count_diff = max_line - line_number_max
+            for i in range(1, line_count_diff+1001):
+                self.line_number_box.configure(state=NORMAL)
+                self.line_number_box.insert(END, f'{line_number_max+i}\n')
+                self.line_number_box.configure(state=DISABLED)
+        except AttributeError as e:
+            pass
+
         self.set_text_widget_editable()
+
+        self.after(3000, self.align_number_of_rows)
+
+    def stop_scroll_down(self):
+        return not any([self.line_count(w)+5 >= int(float(w.index(f'@0,{w.winfo_height()}'))) for w in self.maintexts])
+
+    def mousewheelcommand(self, event):
+        if event.delta > 0:
+            units = -1
+        if event.delta < 0:
+            if self.stop_scroll_down():
+                return 'break'
+            units = 1
+        for text in self.textboxes:
+            text.yview('scroll', units, 'units')
+        return 'break'
+
+    def middle_drag_command(self, event):
+        if self.middledragplace:
+            units = (self.middledragplace[1]-event.y)/10
+            if units > 0:
+                units = math.ceil(units)
+                if self.stop_scroll_down():
+                    return 'break'
+            if units < 0:
+                units = math.floor(units)
+            for text in self.textboxes:
+                text.yview('scroll', int(units), 'units')
+        self.middledragplace = [event.x, event.y]
+        return 'break'
+
+    def middle_release_command(self, event):
+        self.middledragplace = []
+
+    def scroll_when_key_press(self, event):
+        if type(event.widget) == Text:
+            if float(event.widget.index(INSERT)) > self.line_count(event.widget) + 5:
+                event.widget.mark_set(INSERT, f'{self.line_count(event.widget) + 5}.0')
+                event.widget.see(INSERT)
+            bbox = event.widget.bbox(INSERT)
+            if not bbox:
+                while True:
+                    if float(event.widget.index(INSERT)) < float(event.widget.index('@0,0')):
+                        for text in self.textboxes:
+                            text.yview_scroll(-1, PAGES)
+                    elif float(event.widget.index(INSERT)) > float(event.widget.index(f'@0,{event.widget.winfo_height()}')):
+                        for text in self.textboxes:
+                            text.yview_scroll(1, PAGES)
+                    if float(event.widget.index('@0,0')) < float(event.widget.index(INSERT)) < float(event.widget.index(f'@0,{event.widget.winfo_height()}')):
+                        break
+                event.widget.see(INSERT)
+            while True:
+                bbox = event.widget.bbox(INSERT)
+                if bbox[1] > event.widget.winfo_height()*9/10:
+                    for text in self.textboxes:
+                        text.yview_scroll(1, UNITS)
+                elif bbox[1] < event.widget.winfo_height()*1/10:
+                    if event.widget.index('@0,0') == '1.0':
+                        break
+                    for text in self.textboxes:
+                        text.yview_scroll(-1, UNITS)
+                else:
+                    break
+
+    def yscrollcommand(self, *args):
+        proportion = self.seek_vbar_proportion()
+        args = [float(arg)*proportion for arg in args]
+        self.vbar.set(*args)
+
+    def vbarcommand(self, *args):
+        args = list(args)
+        if args[0] == 'moveto':
+            proportion = self.seek_vbar_proportion()
+            args[1] = f'{float(args[1])/proportion}'
+        for text in self.textboxes:
+            text.yview(*args)
+
+    def seek_vbar_proportion(self):
+        max_line = max([self.line_count(w) for w in self.maintexts]) + 1
+        max_line2 = max([self.line_count(w, True) for w in self.maintexts])
+        return max_line2 / max_line
 
     # 以下、ファイルの開始、保存、終了に関するメソッド
     def file_create(self, e=None):
@@ -796,7 +894,7 @@ class Main(Frame):
                 filetypes=[('SoroEditorプロジェクトファイル', '.sep'), ('YAMLファイル', '.yaml'), ('その他', '.*'), ('ThreeCrowsプロジェクトファイル', '.tcs'), ('CastellaEditorプロジェクトファイル', '.cep')],
                 defaultextension='sep')
 
-        log.info(f'Opening file: {file_path_to_open}')
+        logger.info(f'Opening file: {file_path_to_open}')
 
         if file_path_to_open:
             try:
@@ -865,7 +963,7 @@ class Main(Frame):
                 self.make_menu_bookmarks()
 
             except FileNotFoundError as e:
-                log.error(e)
+                logger.error(e)
                 md = MessageDialog(title='TreeCrows - エラー', alert=True, buttons=['OK'], message='ファイルが見つかりません')
                 md.show(self.md_position)
                 # 最近使用したファイルに見つからなかったファイルが入っている場合、削除しsettins.yamlに反映する
@@ -893,7 +991,7 @@ class Main(Frame):
                     pass
 
             except (KeyError, UnicodeDecodeError, yaml.scanner.ScannerError) as e:
-                log.error(f'Cannot open file: {e}')
+                logger.error(f'Cannot open file: {e}')
                 # ファイルが読み込めなかった場合
                 md = MessageDialog(
                     title='TreeCrows - エラー',
@@ -904,7 +1002,7 @@ class Main(Frame):
 
             else:
                 self.filepath = file_path_to_open
-                log.info(f'Succeed opening file: {self.filepath}')
+                logger.info(f'Succeed opening file: {self.filepath}')
 
         return 'break'
 
@@ -947,9 +1045,9 @@ class Main(Frame):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while writing to the file {file_path}: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while writing to the file {file_path}: {error_message}")
         else:
-            log.info(f'Save file: {file_path}')
+            logger.info(f'Save file: {file_path}')
 
         self.update_recently_files()
 
@@ -963,9 +1061,9 @@ class Main(Frame):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
         else:
-            log.info('Update setting file')
+            logger.info('Update setting file')
 
     def update_recently_files(self):
         '''
@@ -1245,7 +1343,7 @@ class Main(Frame):
                 value = datetime.datetime(1900, 1, 1)
                 self.counting_down = False
                 self.count_down_stop_value = '0:00:00.00'
-                print('\a')
+                print('\a', end='')
 
             value = datetime.datetime.strftime(value, f'{value.hour}:%M:%S.%f')
             self.count_down_time.set(value[:-4])
@@ -1608,7 +1706,6 @@ class Main(Frame):
 
         for w in self.maintexts:
             w.insert(insert, '\n')
-            w.see(insert)
 
         widget.mark_set(INSERT, insert)
 
@@ -1701,26 +1798,6 @@ class Main(Frame):
                 w.tag_add('insert_line', insert+' linestart', insert+' lineend')
                 w.tag_config('insert_line', underline=False, font=highlight_font)
 
-    def yscrollcommand(self, *args):
-        for text in self.textboxes:
-            text.yview('moveto', args[0])
-        proportion = self.seek_vbar_proportion()
-        args = [float(arg)*proportion for arg in args]
-        self.vbar.set(*args)
-
-    def vbarcommand(self, *args):
-        args = list(args)
-        if args[0] == 'moveto':
-            proportion = self.seek_vbar_proportion()
-            args[1] = f'{float(args[1])/proportion}'
-        for text in self.textboxes:
-            text.yview(*args)
-
-    def seek_vbar_proportion(self):
-        max_line = max([self.line_count(w) for w in self.maintexts]) + 50
-        max_line2 = max([self.line_count(w, True) for w in self.maintexts])
-        return max_line2 / max_line
-
     def set_text_widget_editable(self, e=None, mode=0, widget=None):
         '''
         mode: int=[0, 1, 2]
@@ -1769,7 +1846,7 @@ class Main(Frame):
 
         if not self.do_backup:
             return
-        log.info('---Backup---')
+        logger.info('---Backup---')
 
         # バックアップファイル名・パスを生成する
         backup_filename = ''
@@ -1825,11 +1902,11 @@ class Main(Frame):
             with open(backup_filepath, 'wt', encoding='utf-8') as f:
                 f.writelines(backup_data)
         except OSError as e:
-            log.error(f'---Failed Backup---\n: {e}')
+            logger.error(f'---Failed Backup---\n: {e}')
             return
 
         # バックアップ完了メッセージをログに出力する
-        log.info(f'{backup_filepath}\n---Succeed Backup---')
+        logger.info(f'{backup_filepath}\n---Succeed Backup---')
 
         # backup_frequency秒後に再度バックアップを実行する
         self.master.after(self.backup_frequency, self.backup)
@@ -1842,11 +1919,11 @@ class Main(Frame):
             return
         if not self.filepath:
             return
-        log.info(f'---Autosave---')
+        logger.info(f'---Autosave---')
         if self.file_over_write_save():
-            log.info(f'---Succeed Autosave---')
+            logger.info(f'---Succeed Autosave---')
         else:
-            log.error(f'---Failed Autosave---')
+            logger.error(f'---Failed Autosave---')
         self.master.after(self.autosave_frequency, self.autosave)
 
     def popup(self, e=None):
@@ -1901,7 +1978,7 @@ class Main(Frame):
 
     def close_sub_window(self, sub_window:Toplevel):
         def inner(*_):
-            log.info(f'---Close {sub_window.__class__.__name__}---')
+            logger.info(f'---Close {sub_window.__class__.__name__}---')
             sub_window.destroy()
         return inner
 
@@ -1922,7 +1999,7 @@ class SettingWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open SettingWindow---')
+        logger.info('---Open SettingWindow---')
         # 設定ファイルの読み込み
         with open('./settings.yaml', mode='rt', encoding='utf-8') as f:
             self.settings = yaml.safe_load(f)
@@ -2215,14 +2292,14 @@ backup-{ファイル名}.$epに保存されます
         try:
             number_of_columns = int(self.setting_number_of_columns.get())
         except ValueError as e:
-            log.exception(f'invalid value in number of columns: {e}')
+            logger.exception(f'invalid value in number of columns: {e}')
             number_of_columns = self.settings['columns']['number']
         percentage_of_columns = []
         for i in range(len(self.setting_column_percentage)):
             try:
                 percentage_of_columns.append(int(self.setting_column_percentage[i].get()))
             except ValueError as e:
-                log.exception(f'invalid value in percentage of columns: {e}')
+                logger.exception(f'invalid value in percentage of columns: {e}')
                 percentage_of_columns.append(self.settings['columns']['percentage'][i])
         for _ in range(10-len(percentage_of_columns)):
             percentage_of_columns.append(0)
@@ -2230,12 +2307,12 @@ backup-{ファイル名}.$epに保存されます
         try:
             font_size = int(self.setting_font_size.get())
         except ValueError as e:
-            log.exception(f'invalid value in font_size: {e}')
+            logger.exception(f'invalid value in font_size: {e}')
             font_size = self.settings['font']['size']
         try:
             between_lines = int(self.setting_between_lines.get())
         except ValueError as e:
-            log.exception(f'invalid value in between lines: {e}')
+            logger.exception(f'invalid value in between lines: {e}')
             between_lines = self.setitngs['between_lines']
         wrap = self.setting_wrap.get()
         themename = self.setting_theme.get()
@@ -2247,13 +2324,13 @@ backup-{ファイル名}.$epに保存されます
         try:
             autosave_frequency = int(float(self.setting_autosave_frequency.get())*60000)
         except ValueError as e:
-            log.exception(f'invalid value in autosave frequency: {e}')
+            logger.exception(f'invalid value in autosave frequency: {e}')
             autosave_frequency = self.settings['autosave_frequency']
         backup = self.backup.get()
         try:
             backup_frequency = int(float(self.setting_backup_frequency.get())*60000)
         except ValueError as e:
-            log.exception(f'invalid value in backup frequency: {e}')
+            logger.exception(f'invalid value in backup frequency: {e}')
             backup_frequency = self.settings['backup_frequency']
         if themename == '------': themename = self.themename
         statusbar_method = {i: [] for i in range(7)}
@@ -2306,7 +2383,7 @@ backup-{ファイル名}.$epに保存されます
                     spacing3=between_lines,
                     )
         except TclError as e:
-            log.error(f'Failed to write to the settigs dict: {e}')
+            logger.error(f'Failed to write to the settigs dict: {e}')
 
         # 設定ファイルに更新された辞書を保存する
         try:
@@ -2315,9 +2392,9 @@ backup-{ファイル名}.$epに保存されます
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
         else:
-            log.info('Update setting file')
+            logger.info('Update setting file')
             MessageDialog('一部の設定（*アスタリスク付きの項目）の反映にはアプリの再起動が必要です\n'+
                         '設定をすぐに反映したい場合、いったんアプリを終了して再起動してください',
                         'SoroEditor - 設定',
@@ -2377,7 +2454,7 @@ class ProjectFileSettingWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open ProjectFileSettingWindow---')
+        logger.info('---Open ProjectFileSettingWindow---')
         if app.get_current_data() != app.data:
             self.withdraw()
             messagedialog = MessageDialog('プロジェクトファイル設定を変更する前にプロジェクトファイルを保存します',
@@ -2465,28 +2542,61 @@ class ThirdPartyNoticesWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        text = __thirdpartynotices__
+        try:
+            if '__compiled__' in globals(): # Nuitkaでコンパイルした場合
+                with open(os.path.join(os.path.dirname(__file__), 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+                    text = f.read()
+            else:
+                with open(os.path.join(os.path.dirname(__file__), '..', 'ThirdPartyNotices.txt'), 'rt', encoding='utf-8') as f:
+                    text = f.read()
+        except FileNotFoundError:
+            url = f'https://raw.githubusercontent.com/joppincal/SoroEditor/v{__version__}/ThirdPartyNotices.txt'
+            logger.info('Could not find ThirdPartyNotices.txt')
+            logger.info(f'Attempt to retrieve data from {url}')
+            try:
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req) as res:
+                    text = res.read().decode('utf-8')
+            except (urllib.error.URLError, urllib.error.HTTPError, urllib.error.ContentTooShortError, TimeoutError, ConnectionError):
+                logger.exception(f'Failed to retrieve data from {url}')
+                text = f'データの取得に失敗しました\nサードパーティライセンスの情報は\nhttps://github.com/joppincal/SoroEditor/blob/v{__version__}/ThirdPartyNotices.txt を参照してください'
+
+        # 等幅フォントの選択
         familys = font.families(self)
-        if 'Consolas' in familys: family = 'Consolas'
-        elif 'SF Mono' in familys: family = 'SF Mono'
-        elif 'DejaVu Sans Mono' in familys: family = 'DejaVu Sans Mono'
-        else: family = 'Courier'
+        family = None
+        for f in ['Consolas', 'SF Mono', 'DejaVu Sans Mono', 'Courier New', 'Courier']:
+            if f in familys:
+                family = f
+                break
+        if not family:
+            family = font.nametofont('TkFixedFont')['family']
+
         widget = ScrolledText(self, 10)
         widget.insert(END, text)
+
+        # ThirdPartyNotice.txtで使用している各ライセンスの区切り
+        # .groups()[0]はライセンス名、.groups()[1]はURL
         pattern = re.compile('\n---------------------------------------------------------\n\n(.+)\n(.+)')
+
         widget.tag_config('name', font=font.Font(family=family, size=18, weight='bold'), spacing2=10)
+
         def open_url(url):
             def inner(_):
                 webbrowser.open_new(url)
-                log.info(f'Open {url}')
+                logger.info(f'Open {url}')
             return inner
+
         for m in pattern.finditer(text):
             index = widget.search(m.group(), 0.0)
+
             widget.tag_add('name', index+'+3lines', index+'+3lines lineend')
             widget.tag_config(m.groups()[1], font=font.Font(family=family, size=14, underline=True), spacing2=10)
+
             widget.tag_add(m.groups()[1], index+'+4lines', index+'+4lines lineend')
+
             command = open_url(m.groups()[1])
             widget.tag_bind(m.groups()[1], '<Button-1>', command)
+
         widget.winfo_children()[0].config(font=font.Font(family=family, size=12), spacing2=10, state=DISABLED)
         widget.pack(fill=BOTH, expand=True)
 
@@ -2688,7 +2798,7 @@ class ImportWindow(Toplevel):
     def __init__(self, title="SoroEditor - インポート", iconphoto='', size=(500, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
-        log.info('---Open ImportWindow---')
+        logger.info('---Open ImportWindow---')
 
         self.close = app.close_sub_window(self)
 
@@ -2722,7 +2832,7 @@ class ImportWindow(Toplevel):
         Separator(self.f1).grid(row=3, column=0, columnspan=2, sticky=EW)
 
         Label(self.f1, text='ファイル: ').grid(row=4, column=0, sticky=E)
-        self.filepath = StringVar(value="P:\My Video\編集データ\台本\看取ってください、私のマスター！.csv")
+        self.filepath = StringVar()
         self.filepath_label = Label(self.f1, textvariable=self.filepath, wraplength=350)
         self.filepath_label.grid(row=4, column=1, sticky=EW)
         Button(self.f1, text='ファイル変更', command=self.change_filepath).grid(row=5, column=1, sticky=E)
@@ -2790,7 +2900,7 @@ class ExportWindow(Toplevel):
     def __init__(self, title="SoroEditor - エクスポート", iconphoto='', size=(1000, 700), position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
-        log.info('---Open ExportWindow---')
+        logger.info('---Open ExportWindow---')
 
         self.close = app.close_sub_window(self)
 
@@ -2885,7 +2995,7 @@ class ExportWindow(Toplevel):
                     initialdir = os.path.dirname(app.filepath)
                     initialfile = os.path.splitext(os.path.basename(app.filepath))[0] + filetype
                 else:
-                    initialdir = sys.argv[0]
+                    initialdir = cwd
                     initialfile = 'export' + filetype
                 if filetype == '.csv':
                     filetype = (['CSVファイル', '*.csv'],
@@ -2931,7 +3041,7 @@ class ExportWindow(Toplevel):
         if app.filepath:
             self.filepath = StringVar(value=os.path.dirname(app.filepath) + '/' + os.path.splitext(os.path.basename(app.filepath))[0] + extension)
         else:
-            self.filepath = StringVar(value=os.path.join(os.path.dirname(sys.argv[0]), 'export'+extension))
+            self.filepath = StringVar(value=os.path.join(cwd, 'export'+extension).replace('\\', '/'))
 
         Label(self.lf3, text='保存先', padding=10).grid(column=0, row=2, sticky=W, padx=10, pady=5)
         filepath_label = Label(self.lf3)
@@ -3048,13 +3158,13 @@ class ExportWindow(Toplevel):
             with open(self.filepath.get(), mode='wt', encoding=encoding, errors='replace') as f:
                 f.write(data)
         except PermissionError as e:
-            log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
+            logger.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
             return False
         except Exception as e:
-            log.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
+            logger.error(f'Failed export {self.file_format.get()}: {self.filepath.get()} {type(e).__name__}: {e}')
             return False
         else:
-            log.info(f'Succeed export {self.file_format.get()}: {self.filepath.get()}')
+            logger.info(f'Succeed export {self.file_format.get()}: {self.filepath.get()}')
             # 書き込みを行い成功した場合Trueを返す
             return True
 
@@ -3064,7 +3174,7 @@ class SearchWindow(Toplevel):
     def __init__(self, title='', iconphoto='', size=None, position=None, minsize=None, maxsize=None, resizable=(0, 0), transient=None, overrideredirect=False, windowtype=None, topmost=False, toolwindow=False, alpha=1, **kwargs):
         super().__init__(title, iconphoto, size, position, minsize, maxsize, resizable, transient, overrideredirect, windowtype, topmost, toolwindow, alpha, **kwargs)
 
-        log.info('---Open SearchWindow---')
+        logger.info('---Open SearchWindow---')
 
         self.protocol('WM_DELETE_WINDOW', self.close)
 
@@ -3084,9 +3194,9 @@ class SearchWindow(Toplevel):
         searchtext = iconphoto
 
         if self.mode == 0:
-            log.info('Search Mode')
+            logger.info('Search Mode')
         if self.mode == 1:
-            log.info('Replace Mode')
+            logger.info('Replace Mode')
 
         self.config(padx=10, pady=10)
 
@@ -3303,7 +3413,7 @@ class TemplateWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open TemplateWindow---')
+        logger.info('---Open TemplateWindow---')
 
         self.is_topmost = BooleanVar()
 
@@ -3370,7 +3480,7 @@ class TemplateWindow(Toplevel):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while loading setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while loading setting file: {error_message}")
             MessageDialog('設定ファイルの読み込みに失敗したため定型文を利用できません\nsettings.yamlが存在するか確認してください',
                             'SoroEditor - 定型文').show(app.md_position)
             self.destroy()
@@ -3391,9 +3501,9 @@ class TemplateWindow(Toplevel):
         except (FileNotFoundError, UnicodeDecodeError, yaml.YAMLError) as e:
             error_type = type(e).__name__
             error_message = str(e)
-            log.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
+            logger.error(f"An error of type {error_type} occurred while saving setting file: {error_message}")
         else:
-            log.info('Succeed updating setting file by TemplateWindow')
+            logger.info('Succeed updating setting file by TemplateWindow')
 
     def key_released(self, e=None):
         # Entry内のテキストに変更があるか確認する
@@ -3426,7 +3536,7 @@ class BookmarkWindow(Toplevel):
 
         app.set_icon_sub_window(self)
 
-        log.info('---Open BookmarkWindow---')
+        logger.info('---Open BookmarkWindow---')
 
         self.is_topmost = BooleanVar()
 
@@ -3641,28 +3751,46 @@ class Icons:
         return os.path.join(os.path.dirname(__file__), path)
 
 def main():
-    global app
-    log_setting()
-    log.info('===Start Application===')
-    root = Window(title='SoroEditor', minsize=(800, 500))
-    root.iconphoto(False, Icons().icon)
-    app = Main(master=root)
-    app.mainloop()
-    log.info('===Close Application===')
+    try:
+        global app
+        log_setting()
+        logger.info('===Start Application===')
+        root = Window(title='SoroEditor', minsize=(800, 500))
+        root.iconphoto(False, Icons().icon)
+        app = Main(master=root)
+        app.mainloop()
+
+    except: # あらゆる想定外のエラーをログに出力
+        if not '__compiled__' in globals(): # Nuitkaで作成した実行ファイルでない場合、標準出力
+            import traceback
+            print(traceback.format_exc(), end='')
+
+        # エラー内容をログファイルに出力
+        logger.exception('Unexpected Error')
+        # エラー発生ダイアログを表示
+        messagedialog = MessageDialog('Unexpected error.\nSee log file for details.', 'SoroEditor - Unexpected Error', ['OK', 'Open log file'], alert=True)
+        messagedialog.show()
+
+        if messagedialog.result == 'Open log file': # ログファイルを開く
+            os.startfile(os.path.abspath('./log/soroeditor.log'))
+
+    finally:
+        logger.info('===Close Application===')
 
 def log_setting():
-    global log
+    global logger
     if not os.path.exists('./log'):
         os.mkdir('./log')
-    log = logging.getLogger(__name__)
-    log.setLevel(logging.DEBUG)
-    formater = logging.Formatter('{asctime} {name:<8s} {levelname:<8s} {message}', style='{')
-    handler = logging.handlers.RotatingFileHandler(
+    logger = getLogger(__name__)
+    logger.setLevel(DEBUG)
+    formater = Formatter('{asctime} {name:<21s} {levelname:<8s} {message}', style='{')
+    handler = handlers.RotatingFileHandler(
         filename='./log/soroeditor.log',
         encoding='utf-8',
-        maxBytes=102400)
+        maxBytes=102400,
+        backupCount=10)
     handler.setFormatter(formater)
-    log.addHandler(handler)
+    logger.addHandler(handler)
 
 if __name__ == '__main__':
     main()

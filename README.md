@@ -82,5 +82,5 @@
 
 コマンドは以下の通り
 ```PowerShell
-nuitka --mingw64 --onefile --enable-plugin=tk-inter --include-data-files=ThirdPartyNotices.txt= --include-data-files=hello.txt= --include-data-dir=src=src --disable-console --clang --windows-icon-from-ico="src/icon/icon.ico” SoroEditor.py
+nuitka --mingw64 --onefile --enable-plugin=tk-inter --include-data-dir=soroeditor/src=src --include-data-files=ThirdPartyNotices.txt= --disable-console --clang --windows-icon-from-ico=soroeditor/src/icon/icon.ico soroeditor/SoroEditor.py
 ```

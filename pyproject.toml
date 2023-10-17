@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "soroeditor"
-version = "0.5.1"
+version = "0.6.0"
 description = "SoroEditor is a text editor that allows multi-column editing."
 authors = ["joppincal <106348367+joppincal@users.noreply.github.com>"]
 license = "MIT"
