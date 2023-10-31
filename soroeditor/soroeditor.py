@@ -2040,6 +2040,9 @@ class SettingWindow(Toplevel):
             ['各機能情報', 'infomation'],
             ['顔文字', 'kaomoji'],
             ['ステータスバー初期メッセージ', 'statusbar_message'],
+            ['時計', 'clock'],
+            ['カウントダウン', 'count_down_timer'],
+            ['ストップウォッチ', 'count_up_timer'],
             ]
         self.pair_of_tool_bar_elements = [
             ['ボタン - 新規作成', 'toolbutton_create'],
