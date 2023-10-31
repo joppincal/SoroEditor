@@ -355,7 +355,7 @@ class Main(Frame):
         self.the_time_count_up_stoped = datetime.datetime.now()
         self.counting_up = False
         self.count_up_timer = {
-            'type': 'label',
+            'widget_type': 'label',
             'text': None,
             'command': [self.count_up_timer_clicked],
             'image': None,
@@ -369,13 +369,13 @@ class Main(Frame):
         self.count_down_time = StringVar(value=self.count_down_stop_value)
         self.counting_down = False
         self.count_down_timer = {
-            'type': 'label',
+            'widget_type': 'label',
             'text': '',
             'command': {
                 '<Button>': self.count_down_timer_clicked,
                 '<MouseWheel>': self.count_down_timer_wheeled,
             },
-            'textvariable': self.count_down_time
+            'textvariable': self.count_down_time,
         }
         ## ツールボタン
         self.toolbutton_create = ('button', '新規作成', [self.file_create], self.Icons.file_create)
@@ -436,7 +436,7 @@ class Main(Frame):
                 return method
 
         # ステータスバー作成メソッド
-        def make_statusbar_element(type_:str='', text:str='', command:list=[], image:PhotoImage=None, textvariable:StringVar=None):
+        def make_statusbar_element(widget_type:str='', text:str='', command:list=[], image:PhotoImage=None, textvariable:StringVar=None):
             '''
             Make statusbar and toolbar elements.
 
@@ -448,9 +448,9 @@ class Main(Frame):
             '''
             widget = None
 
-            if type_ == 'label':
+            if widget_type == 'label':
                 widget = Label(text=text, image=image, textvariable=textvariable)
-            if type_ == 'button':
+            if widget_type == 'button':
                 if self.button_style == 'icon_only':
                     compound = None
                 elif self.button_style == 'text_only':
