@@ -344,8 +344,14 @@ class Main(Frame):
         ## 各機能情報
         self.infomation = ('label', f'自動保存: {self.do_autosave}, バックアップ: {self.do_backup}')
         ## 顔文字
-        kaomoji_list = ['( ﾟ∀ ﾟ)', 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)', '(●▲●)', '(○▽○)', '(´・ω・)つ旦', ' (●ﾟ◇ﾟ●)', "（'ω`）"]
-        self.kaomoji = ('label', choice(kaomoji_list))
+        self.kaomoji_list = ['( ﾟ∀ ﾟ)', "('A`)", "('∀`)", 'ヽ(*^^*)ノ ', '(((o(*ﾟ▽ﾟ*)o)))', '(^^)', '(*^○^*)', '(`o´)', '(´・ω・`)', '( ﾟдﾟ )', '(　ﾟДﾟ)', '( ；ﾟДﾟ)', 'ヽ(`Д´)ﾉ ', '( *´・ω)/(；д； )', '( ；∀；)', '(⊃︎´▿︎` )⊃︎ ', '(・∀・)', '((o(^∇^)o))', 'ｷﾀ━━━━(ﾟ∀ﾟ)━━━━!!', ' 【審議中】　(　´・ω) (´・ω・) (・ω・｀) (ω・｀ ) ', '(*´ω｀*)', '(●▲●)', '(○▽○)', '(´・ω・)つ旦', ' (●ﾟ◇ﾟ●)', "（'ω`）", '(・3・)アルェー？', '＞＜', 'のヮの', '8(のヮの)8', '"ヮ"', 'ζ*’ヮ’)ζ', "ζ*'ヮ')ζ＜うっうー", '丫 (๑°□°๑)丫']
+        self.kaomoji_variable = StringVar(value=choice(self.kaomoji_list))
+        self.kaomoji = {
+            'widget_type': 'label',
+            'text': None,
+            'command': [self.change_kaomoji],
+            'textvariable': self.kaomoji_variable
+            }
         ## 時計
         self.now = StringVar()
         self.clock_mode = self.settings.get('clock_mode', 'ymdhm')
@@ -1214,6 +1220,9 @@ class Main(Frame):
         if not debug:
             obj = obj.rstrip('\r\n')
         return obj.count('\n') + 1 if obj else 0
+
+    def change_kaomoji(self, _):
+        self.kaomoji_variable.set(choice(self.kaomoji_list))
 
     def now_time_set(self):
         mode = self.clock_mode
