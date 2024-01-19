@@ -1,3 +1,5 @@
+現在、このプロジェクトの開発は停止中です。GUIツールキットを tkinter から pyside6に変更し、 [soroeditor-qt](https://github.com/joppincal/soroeditor-qt) を主に開発しています。
+
 # そろエディタ SoroEditor
 
 複数列が横に揃って並ぶテキストエディタです。
